@@ -159,8 +159,9 @@ See [ROADMAP.md](ROADMAP.md). Contributions are welcome; each round has clear, m
 ## Not included
 - **No Nintendo assets.** Exported vanilla tiles, sprites and renders are not in this repo. `pk` reads them from
   your own checkout.
-- **No blueprints or region plans.** The project this was built for kept its blueprints private. `pk bp` works
-  with any `blueprints/` folder you create (see `pk help bp`).
+- **No blueprints or region plans.** The project this was built for keeps its own vision private. Start from
+  [blueprints/VISION.template.md](blueprints/VISION.template.md): copy it to `blueprints/VISION.md` in your repo
+  and fill it in. Agents read it every session. `pk bp` works with any `blueprints/` folder (see `pk help bp`).
 
 ## License
 MIT, see `LICENSE`. Pokémon is © Nintendo / Creatures / GAME FREAK. This project contains no Pokémon game
