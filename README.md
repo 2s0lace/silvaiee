@@ -6,6 +6,43 @@ The name comes from Silvally, the Pokémon that changes type depending on the me
 works the same way: plug in any model (Claude, GPT, Gemini, DeepSeek, Qwen...) and it becomes your mapper,
 writer or pixel artist.
 
+## Who built what
+Silvaiee was built by a team of AI models, directed by one human. Each did what it does best.
+
+**Fundamentals: written by Astra, perfected by Claude Opus 5.5.** Astra implemented the first version of `pk`
+from the spec: the protocol, the journal and the map core. Claude Opus finished, tested and extended it, and it
+also designed the benchmark.
+
+**Best dialogue: Sol 6.1, the owner's pick.** Sol got the highest human score in the
+[dialogue benchmark](tools/pk/bench/results.md), 9.3/10. On the combined human and blind-AI average it finished
+a close second, 8.1 to Claude Opus's 8.3. From its Viridian City NPCs:
+
+> **Old man by the locked GYM, day:** The GYM LEADER is away. Nobody seems to know where. ▸ I've tried knocking.
+> That was all the exercise I needed!
+>
+> **Same old man, night:** I used to hurry home before dark. ▸ Now I stay to watch the stars. They never seem to
+> be in a hurry.
+>
+> **Woman by the pond:** Everyone walks so quickly here. ▸ I like to sit by the pond. Let the ripples do the
+> traveling.
+
+**Best maps: Claude Opus 5.5.** It came first in the [level-design benchmark](tools/pk/bench/results.md) with 6/10
+from both the human and the blind AI judge, and it was the only model whose self-rating matched its real score.
+The task was to extend Pallet Town with a park and a beach, mostly from pieces of vanilla maps:
+
+<img src="docs/img/opus_map.png" alt="Pallet Town extended by Claude Opus" width="384">
+
+**Best assets so far: DeepSeek v4.1 Flash.** It drew the first original tiles the owner approved: a wooden pier
+and a park bench. It is also the only model tested on pixel art so far; the asset benchmark comes next.
+
+<img src="docs/img/deepseek_pier.png" alt="Pier by DeepSeek" height="144"> <img src="docs/img/deepseek_bench_v2.png" alt="Bench by DeepSeek" height="64">
+
+Also on the team:
+- **GLM:** technical features (lint, paintover, sprites);
+- **Gemini:** concept art and the paintover experiment;
+- **Muse, Sonnet and the rest:** benchmark entries.
+
+## What it is
 Silvaiee is built around `pk`, an LLM-friendly command line for pokeemerald-expansion (FRLG). `pk` lets AI agents (Claude, GLM, DeepSeek, Gemini...) edit a FireRed/LeafGreen ROM hack built on
 [pokeemerald-expansion](https://github.com/rh-hideout/pokeemerald-expansion) **without reading raw game files**.
 Agents never open `map.bin`, `map.json` or `scripts.inc`. They run short commands and get short, predictable
