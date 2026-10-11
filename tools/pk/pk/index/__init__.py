@@ -1,0 +1,1 @@
+"""Deterministic SQLite source index."""

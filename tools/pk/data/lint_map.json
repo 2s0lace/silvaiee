@@ -1,0 +1,12 @@
+{ "natural": ["water", "sand", "grass", "tree", "tall_grass"],
+  "decor_tags": ["tree", "flowers", "fence", "sign"],
+  "stair_min_steps": 4, "stair_min_run": 2,
+  "straight_max": 16,
+  "straight_types": ["MAP_TYPE_TOWN", "MAP_TYPE_CITY"],
+  "dash_min_run": 4, "dash_min_gap": 6,
+  "dash_types": ["MAP_TYPE_TOWN", "MAP_TYPE_CITY"],
+  "rect_min": 8, "rect_fill": 1.0, "rect_border": true,
+  "empty_w": 15, "empty_h": 10, "empty_margin": 2,
+  "empty_types": ["MAP_TYPE_TOWN", "MAP_TYPE_CITY"],
+  "empty_solid": true, "empty_water_frac": 0.3,
+  "max_lines": 12 }

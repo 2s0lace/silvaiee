@@ -1,0 +1,14 @@
+voice: VIRIDIAN CITY is an unhurried crossroads where rookies dream big, and locals take pride in small comforts.
+[old_timer]
+day: I walk over to check this GYM door every single morning.||Still locked tight!|The GYM LEADER has been away for ages.||At my age, a locked door is a fine excuse to rest!
+night: The cold wind whistles through the keyhole after dark.||It sounds like someone humming inside!|Spooky, eh?||Run along to the POKéMON CENTER before you catch a chill.
+[kid]
+day: The clerk at the POKé MART let me hold an empty POKé BALL!||It felt much heavier than I thought.|I almost dropped it right on my toes!
+[pond_lady]
+day: Young TRAINERS keep rushing off toward VIRIDIAN FOREST.||They look so worried about catching every wild POKéMON!||I prefer watching ripples on this calm pond instead.
+night: When the town goes quiet, water bugs skim across the pond.||If you listen closely, you can hear them tapping on the surface.||Nature has its own little songs after the sun goes down.
+[league_hiker]
+day: ROUTE 22 heads west toward the POKéMON LEAGUE gate.||I hiked up with my pack, but the guards turned me away.||They only let TRAINERS with BADGES pass! Mountains are friendlier.
+[tips_sign]
+text: TRAINER TIPS||POISON does not wear off when a battle ends!||A poisoned POKéMON loses HP with every step you take in the field.
+self: 8.5/10

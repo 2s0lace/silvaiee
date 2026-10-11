@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blind Model Test</title>
+<style>
+:root {
+  --bg: #f6f5f1; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6a65; --line: #e2e0d8;
+  --accent: #2f6fdb; --accent-ink: #ffffff; --good: #2e8b57; --bad: #c0392b;
+  --box: #fbfbf8; --box-line: #4a6fa5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141413; --card: #1f1f1d; --ink: #ecebe6; --muted: #9b9a94; --line: #34332f;
+    --accent: #6c9ef0; --accent-ink: #0d0d0c; --good: #5cc28a; --bad: #e57368;
+    --box: #262624; --box-line: #6c8fc5;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 80px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 14px; }
+.tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.tabs button { border-radius: 999px; padding: 6px 16px; }
+.tabs button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.bar { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 10px 0;
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.bar .progress { color: var(--muted); margin-right: auto; }
+button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; margin-top: 16px; }
+.grid.wide { grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.card img { width: 100%; display: block; image-rendering: pixelated; cursor: zoom-in; background: #000; }
+.card .body { padding: 12px; }
+.card h2 { margin: 0 0 8px; font-size: 18px; display: flex; justify-content: space-between; align-items: baseline; }
+.card h2 .who { font-size: 14px; color: var(--accent); font-weight: 600; }
+.crit { font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+.scale { display: grid; grid-template-columns: repeat(11, 1fr); gap: 4px; }
+.scale button { padding: 5px 0; font-size: 13px; }
+.scale button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+textarea { width: 100%; margin-top: 8px; font: inherit; font-size: 13px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; resize: vertical; min-height: 34px; }
+.reveal { margin-top: 10px; font-size: 13px; color: var(--muted); display: none; }
+.revealed .reveal { display: block; }
+.anchors { font-size: 13px; color: var(--muted); display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 2px 16px; margin: 0 0 8px; }
+table { border-collapse: collapse; width: 100%; margin-top: 20px; background: var(--card); border-radius: 12px; overflow: hidden; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 14px; }
+th { color: var(--muted); font-weight: 600; }
+.diff-pos { color: var(--bad); } .diff-neg { color: var(--good); }
+#zoom { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: none; align-items: center; justify-content: center; z-index: 9; cursor: zoom-out; }
+#zoom img { max-width: 96vw; max-height: 94vh; image-rendering: pixelated; }
+details { margin-bottom: 8px; }
+summary { cursor: pointer; color: var(--muted); }
+.ref img { max-width: 100%; width: 384px; image-rendering: pixelated; border-radius: 8px; margin-top: 8px; }
+.voice { font-style: italic; color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+.npc { margin: 10px 0 0; }
+.npc .name { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.npc .kind { font-weight: 500; color: var(--accent); margin-left: 6px; text-transform: none; letter-spacing: 0; }
+.boxes { display: flex; flex-direction: column; gap: 4px; margin-top: 3px; }
+.tbox { background: var(--box); border: 2px solid var(--box-line); border-radius: 6px; padding: 5px 9px;
+  font: 14px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Blind model test</h1>
+  <p class="sub">Score every entry without knowing who made it, then press Reveal. Each tab reveals separately.</p>
+  <div class="tabs"><button data-tab="maps">Maps</button><button data-tab="dlg">Dialogue</button></div>
+  <div id="help"></div>
+  <div class="bar">
+    <span class="progress" id="progress"></span>
+    <button id="reset">Reset this tab</button>
+    <button id="copy" disabled>Copy results</button>
+    <button id="reveal" class="primary" disabled>Reveal</button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div id="summary"></div>
+</main>
+<div id="zoom"><img alt=""></div>
+<script>
+const DATA = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob("__DATA__"), c => c.charCodeAt(0))));
+const CRIT = { maps: ['score'], dlg: ['voice', 'place', 'charm', 'variety'] };
+const CRIT_LABEL = { score: 'Score', voice: 'Sounds like FRLG', place: 'Fits VIRIDIAN', charm: 'Charm', variety: 'Variety' };
+const STORE = 'pk-blind-v2';
+let st = { tab: 'maps', maps: { scores: {}, notes: {}, revealed: false }, dlg: { scores: {}, notes: {}, revealed: false } };
+try {
+  const s = JSON.parse(localStorage.getItem(STORE) || 'null');
+  if (s) st = Object.assign(st, s);
+  else {                                     // carry over map scores from the first version of this page
+    const v1 = JSON.parse(localStorage.getItem('pk-blind-v1') || 'null');
+    if (v1) st.maps = { scores: Object.fromEntries(Object.entries(v1.scores || {}).map(([k, v]) => [k, { score: v }])),
+                        notes: v1.notes || {}, revealed: !!v1.revealed };
+  }
+} catch (e) {}
+const save = () => { try { localStorage.setItem(STORE, JSON.stringify(st)); } catch (e) {} };
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const letters = () => Object.keys(DATA[st.tab].key).sort();
+const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : undefined;
+const fmt = v => v === undefined ? '–' : (Number.isInteger(v) ? v : v.toFixed(1));
+
+function myScore(L) {
+  const s = st[st.tab].scores[L] || {};
+  const vals = CRIT[st.tab].map(c => s[c]);
+  return vals.every(v => v !== undefined) ? avg(vals) : undefined;
+}
+function claudeScore(L) {
+  const c = DATA[st.tab].claude[L];
+  if (c === undefined) return undefined;
+  return typeof c === 'number' ? c : avg(Object.values(c));
+}
+function selfScore(L) { return DATA[st.tab].self[(DATA[st.tab].key[L] || '').toLowerCase()]; }
+
+function helpHtml() {
+  if (st.tab === 'maps') return `<details class="ref"><summary>Scale and vanilla reference (vanilla Pallet Town = 10)</summary>
+    <div class="anchors"><span><b>10</b>: could ship in FRLG</span><span><b>8</b>: looks like Game Freak</span>
+    <span><b>6</b>: hand-made but pleasant</span><span><b>4</b>: obvious seams, blocky edges</span>
+    <span><b>2</b>: patchwork</span><span><b>0</b>: broken</span></div>
+    <img src="${DATA.maps.vanilla}" alt="Vanilla Pallet Town"></details>`;
+  return `<details class="ref"><summary>What the 4 criteria mean</summary><div class="anchors">
+    <span><b>Sounds like FRLG</b>: short, warm, simple; no slang or meta jokes</span>
+    <span><b>Fits VIRIDIAN</b>: couldn't be moved to another town</span>
+    <span><b>Charm</b>: would a player smile or remember it?</span>
+    <span><b>Variety</b>: NPCs feel like different people; night lines really differ</span></div></details>`;
+}
+
+function entryHtml(L) {
+  if (st.tab === 'maps') return `<img src="${DATA.maps.images[L]}" alt="Map ${L}" data-zoom="${L}">`;
+  const d = DATA.dlg.texts[L];
+  if (!d) return '';
+  const boxes = t => t.split(/\s*\|\|\s*/).map(b => `<div class="tbox">${esc(b.replace(/\s*\|\s*/g, '\n'))}</div>`).join('');
+  return `<div class="body" style="padding-bottom:0"><p class="voice">Voice note: ${esc(d.voice)}</p>` +
+    d.sections.map(s => s.texts.map(t => `<div class="npc"><span class="name">${esc(s.id.replace(/_/g, ' '))}
+      <span class="kind">${t.kind}</span></span><div class="boxes">${boxes(t.text)}</div></div>`).join('')).join('') + '</div>';
+}
+
+function render() {
+  const T = st[st.tab];
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === st.tab));
+  document.body.classList.toggle('revealed', T.revealed);
+  $('#help').innerHTML = helpHtml();
+  const grid = $('#grid'); grid.innerHTML = ''; grid.className = 'grid' + (st.tab === 'dlg' ? ' wide' : '');
+  for (const L of letters()) {
+    const who = T.revealed ? DATA[st.tab].key[L] : '';
+    const card = document.createElement('div'); card.className = 'card';
+    const cl = DATA[st.tab].claude[L];
+    const clDetail = cl && typeof cl === 'object' ? ' (' + CRIT.dlg.map(c => `${CRIT_LABEL[c].split(' ')[0].toLowerCase()} ${cl[c]}`).join(', ') + ')' : '';
+    card.innerHTML = entryHtml(L) + `<div class="body"><h2><span>${st.tab === 'maps' ? 'Map' : 'Text'} ${L}</span>
+      <span class="who">${esc(who)}</span></h2><div class="crits"></div>
+      <textarea placeholder="Notes (optional)">${esc(T.notes[L] || '')}</textarea>
+      <div class="reveal">Claude: <b>${fmt(claudeScore(L))}</b>${clDetail} · self-rating: <b>${fmt(selfScore(L))}</b>
+      <br>${esc(DATA[st.tab].notes[L] || '')}</div></div>`;
+    const crits = card.querySelector('.crits');
+    for (const c of CRIT[st.tab]) {
+      if (CRIT[st.tab].length > 1) { const lab = document.createElement('div'); lab.className = 'crit'; lab.textContent = CRIT_LABEL[c]; crits.appendChild(lab); }
+      const row = document.createElement('div'); row.className = 'scale';
+      for (let n = 0; n <= 10; n++) {
+        const b = document.createElement('button'); b.textContent = n; b.disabled = T.revealed;
+        if ((T.scores[L] || {})[c] === n) b.classList.add('on');
+        b.onclick = () => { T.scores[L] = Object.assign({}, T.scores[L], { [c]: n }); save(); render(); };
+        row.appendChild(b);
+      }
+      crits.appendChild(row);
+    }
+    card.querySelector('textarea').oninput = e => { T.notes[L] = e.target.value; save(); };
+    const img = card.querySelector('img[data-zoom]');
+    if (img) img.onclick = () => { $('#zoom img').src = DATA.maps.images[L]; $('#zoom').style.display = 'flex'; };
+    grid.appendChild(card);
+  }
+  const all = letters(), done = all.filter(L => myScore(L) !== undefined).length;
+  $('#progress').textContent = !all.length ? 'Nothing to score yet' : T.revealed ? 'Revealed' : `Scored ${done} / ${all.length}`;
+  $('#reveal').disabled = T.revealed || !all.length || done < all.length;
+  $('#copy').disabled = !T.revealed;
+  renderSummary();
+}
+
+function rows() {
+  return letters().map(L => {
+    const you = myScore(L), cl = claudeScore(L), self = selfScore(L);
+    return { L, model: DATA[st.tab].key[L], you, cl, self, avg: avg([you, cl].filter(v => v !== undefined)) };
+  }).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1));
+}
+
+function renderSummary() {
+  const box = $('#summary');
+  if (!st[st.tab].revealed) { box.innerHTML = ''; return; }
+  box.innerHTML = `<table><tr><th>#</th><th>Entry</th><th>Model</th><th>You</th><th>Claude</th><th>Average</th>
+    <th>Self</th><th>Self − average</th></tr>` + rows().map((r, i) => {
+      const d = r.self !== undefined && r.avg !== undefined ? r.self - r.avg : undefined;
+      const cls = d === undefined ? '' : d > 0.5 ? 'diff-pos' : d < -0.5 ? 'diff-neg' : '';
+      return `<tr><td>${i + 1}</td><td>${r.L}</td><td>${esc(r.model)}</td><td>${fmt(r.you)}</td><td>${fmt(r.cl)}</td>
+        <td><b>${fmt(r.avg)}</b></td><td>${fmt(r.self)}</td><td class="${cls}">${d === undefined ? '–' : (d > 0 ? '+' : '') + fmt(d)}</td></tr>`;
+    }).join('') + '</table>';
+}
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { st.tab = b.dataset.tab; save(); render(); });
+$('#reveal').onclick = () => { st[st.tab].revealed = true; save(); render(); };
+$('#reset').onclick = () => { if (confirm('Clear your scores and notes in this tab?')) { st[st.tab] = { scores: {}, notes: {}, revealed: false }; save(); render(); } };
+$('#copy').onclick = () => {
+  const T = st[st.tab];
+  const text = `[${st.tab === 'maps' ? 'Maps' : 'Dialogue'}]\nEntry | Model | You | Claude | Self | Notes\n` + rows().map(r =>
+    `${r.L} | ${r.model} | ${fmt(r.you)} | ${fmt(r.cl)} | ${fmt(r.self)} | ${(T.notes[r.L] || '').replace(/\n/g, ' ')}` +
+    (st.tab === 'dlg' ? ` | you: ${CRIT.dlg.map(c => (T.scores[r.L] || {})[c]).join('/')}` : '')).join('\n');
+  navigator.clipboard.writeText(text).then(() => { $('#copy').textContent = 'Copied!'; setTimeout(() => $('#copy').textContent = 'Copy results', 1500); });
+};
+$('#zoom').onclick = () => { $('#zoom').style.display = 'none'; };
+render();
+</script>
+</body>
+</html>

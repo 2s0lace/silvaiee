@@ -1,0 +1,14 @@
+voice: A quiet town where everyone is waiting for something, and passes the time with small kindnesses and gentle grumbling.
+[old_timer]
+day: That GYM has been locked for ages.||Its LEADER is away, and nobody will say where.||I just sit here and wait. I'm good at it.
+night: The town is so quiet after dark.|The GYM looks lonelier than ever.||Still, a locked door is only a door.|It won't stay shut forever.
+[kid]
+day: My POKé BALL rolled under the POKé MART!||I'll get it back later.|First I have to finish being very busy.
+[pond_lady]
+day: This little pond is lovely.||I come here to think.|Mostly I think about lunch.
+night: Shh... listen.||The water is so calm at night.|I think the POKéMON are asleep, too.
+[league_hiker]
+day: This way leads to ROUTE 22.||Past it is the POKéMON LEAGUE gate.||I always turn back at the door.|It's very tall.
+[tips_sign]
+text: TRAINER TIPS||A weakened POKéMON is easier to catch.|Status problems like sleep help, too.
+self: 6

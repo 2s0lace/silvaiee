@@ -1,0 +1,116 @@
+{
+ "004": {
+  "name": "flowers_red",
+  "tags": [
+   "flowers"
+  ]
+ },
+ "008": {
+  "name": "lawn_a",
+  "tags": [
+   "lawn"
+  ]
+ },
+ "009": {
+  "name": "lawn_b",
+  "tags": [
+   "lawn"
+  ]
+ },
+ "00E": {
+  "name": "lawn_d",
+  "tags": [
+   "lawn"
+  ]
+ },
+ "00F": {
+  "name": "lawn_e",
+  "tags": [
+   "lawn"
+  ]
+ },
+ "011": {
+  "name": "lawn_c",
+  "tags": [
+   "lawn"
+  ]
+ },
+ "0D3": {
+  "name": "path_a",
+  "tags": [
+   "path"
+  ]
+ },
+ "0D4": {
+  "name": "path_b",
+  "tags": [
+   "path"
+  ]
+ },
+ "0D5": {
+  "name": "path_c",
+  "tags": [
+   "path"
+  ]
+ },
+ "0DB": {
+  "name": "path_d",
+  "tags": [
+   "path"
+  ]
+ },
+ "0DC": {
+  "name": "path_e",
+  "tags": [
+   "path"
+  ]
+ },
+ "0DD": {
+  "name": "path_f",
+  "tags": [
+   "path"
+  ]
+ },
+ "0E3": {
+  "name": "path_g",
+  "tags": [
+   "path"
+  ]
+ },
+ "0E4": {
+  "name": "path_h",
+  "tags": [
+   "path"
+  ]
+ },
+ "0E5": {
+  "name": "path_i",
+  "tags": [
+   "path"
+  ]
+ },
+ "102": {
+  "name": "path_j",
+  "tags": [
+   "path"
+  ]
+ },
+ "103": {
+  "name": "path_k",
+  "tags": [
+   "path"
+  ]
+ },
+ "104": {
+  "name": "path_l",
+  "tags": [
+   "path"
+  ]
+ },
+ "105": {
+  "name": "path_m",
+  "tags": [
+   "path"
+  ]
+ }
+}

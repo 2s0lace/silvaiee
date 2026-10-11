@@ -1,0 +1,6 @@
+{
+ "note": "Project policy from blueprints/VISION.md. pk bp refuses blueprints that break it.",
+ "no_new_items": true,
+ "no_new_quests": true,
+ "no_new_trainers": false
+}

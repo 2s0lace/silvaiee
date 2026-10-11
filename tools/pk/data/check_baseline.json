@@ -1,0 +1,5 @@
+[
+ "Route6_Frlg connection up -> SaffronCity_Connection_Frlg offset 0 mismatches reciprocal",
+ "SaffronCity_Connection_Frlg connection down -> Route6_Frlg offset 12 mismatches reciprocal",
+ "gTileset_CableClub_Frlg tiles.png has 640 tiles, only 384 load"
+]

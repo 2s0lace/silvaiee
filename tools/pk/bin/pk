@@ -1,0 +1,3 @@
+#!/bin/sh
+PK_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+exec "${PYTHON:-python}" -B "$PK_DIR/pk.py" "$@"

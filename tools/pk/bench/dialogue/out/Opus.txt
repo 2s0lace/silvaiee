@@ -1,0 +1,14 @@
+voice: VIRIDIAN CITY is a patient crossroads town where folks wait, watch the roads and wave travelers on.
+[old_timer]
+day: This GYM has been locked for ages.|Nobody knows where its LEADER went.||I come by every morning anyway.|Someone ought to be here when the door opens.
+night: Shh... Listen.||Sometimes I think I hear footsteps inside that GYM at night.||Probably just my old knees creaking.|Off to bed with you, youngster.
+[kid]
+day: I'm saving up for my own POKé BALLS!||The POKé MART lady says I have to grow taller first.|That's not a real rule, is it?
+[pond_lady]
+day: I sit by this pond every day.|The water is so calm here.||Travelers rush past to VIRIDIAN FOREST.|I like to watch the ripples instead.
+night: Oh, you startled me!||At night, the pond reflects the stars.|It's my favorite time to sit here.||Don't stay up too late, though.|Your POKéMON need their rest, too.
+[league_hiker]
+day: West of here is ROUTE 22.|It leads to the POKéMON LEAGUE gate.||I hiked there once.|The guards wouldn't let me pass!||They want TRAINERS with BADGES.|I'll stick to mountains.
+[tips_sign]
+text: TRAINER TIPS||A POKéMON that is asleep or paralyzed is easier to catch!||Weaken it first, then throw a POKé BALL.
+self: 7

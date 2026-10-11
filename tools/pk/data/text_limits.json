@@ -1,0 +1,21 @@
+{
+  "font": "FONT_NORMAL",
+  "line_px": 208,
+  "lines_at_limit": 27,
+  "lines_measured": 35012,
+  "lines_per_box": 2,
+  "max_seen_px": 210,
+  "outliers": [
+    "Debug_Enable_To_Use_Follower_NPCs",
+    "MoveRelearner_Text_AnythingElse"
+  ],
+  "placeholder_px": {
+    "KUN": 0,
+    "PLAYER": 42,
+    "RIVAL": 42,
+    "STR_VAR_1": 60,
+    "STR_VAR_2": 60,
+    "STR_VAR_3": 60
+  },
+  "source": "pk text calibrate: vanilla .string lines, gFontNormalLatinGlyphWidths, charmap.txt"
+}

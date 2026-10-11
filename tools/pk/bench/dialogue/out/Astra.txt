@@ -1,0 +1,14 @@
+voice: VIRIDIAN CITY is a quiet doorstep to adventure, where neighbors offer small comforts and gently tease anyone in a hurry.
+[old_timer]
+day: The GYM LEADER is away. Nobody knows where.||I keep checking the door. At my age, that counts as exercise!
+night: I used to walk home by the lights in that GYM.||Tonight, I have to watch my feet.
+[kid]
+day: I practiced asking for a POKé BALL all morning.||Then I got to the counter and whispered it!
+[pond_lady]
+day: I sit here while my son shops.||He compares every POKé BALL. I compare clouds.
+night: A POKéMON splashed just as I was nodding off.||Now we are both wide awake.
+[league_hiker]
+day: ROUTE 22 leads to the POKéMON LEAGUE gate.||I stood a little taller when I saw it. Even with this pack!
+[tips_sign]
+text: TRAINER TIPS||A wild POKéMON is easier to catch when its HP is low.||Take care not to make it faint!
+self: 8/10

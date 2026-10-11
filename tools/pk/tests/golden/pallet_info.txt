@@ -1,0 +1,13 @@
+OK PalletTown_Frlg
+id MAP_PALLET_TOWN
+layout LAYOUT_PALLET_TOWN frlg
+size 24x20
+tilesets gTileset_General_Frlg gTileset_PalletTown
+music MUS_RG_PALLET weather WEATHER_SUNNY
+type MAP_TYPE_TOWN
+events obj:3 warp:3 coord:3 bg:5
+conn up MAP_ROUTE1 offset=0
+conn down MAP_ROUTE21_NORTH offset=0
+warp#0 @6,7 -> MAP_PALLET_TOWN_PLAYERS_HOUSE_1F#1
+warp#1 @15,7 -> MAP_PALLET_TOWN_RIVALS_HOUSE#0
+warp#2 @16,13 -> MAP_PALLET_TOWN_PROFESSOR_OAKS_LAB#0

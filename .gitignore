@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.pk/
+tools/pk/bench/blind/
+tools/pk/bench/blind_key.txt
+tools/pk/bench/scores.json
+tools/pk/bench/dialogue/blind/
+tools/pk/bench/dialogue/blind_key.txt
+tools/pk/bench/dialogue/scores.json
