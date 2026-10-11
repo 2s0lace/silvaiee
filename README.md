@@ -103,6 +103,10 @@ The full tables, findings and caveats (one attempt per model, and the AI judge i
 Want to add a model? Copy a file from `runs/` and `dialogue/runs/`, change the tag, run it, and open a PR with
 the outputs.
 
+## Roadmap
+Mountains and highlands, animated tiles, self-perfecting maps and art, and then a full Kanto rebuild.
+See [ROADMAP.md](ROADMAP.md). Contributions are welcome; each round has clear, measurable targets.
+
 ## Known issues
 - **`pk map lint` is broken.** It is meant to flag ugly maps (seams, staircase shorelines, rectangular patches,
   empty screens), but its thresholds were loosened until it reports `score:0` on everything, ugly maps
