@@ -88,6 +88,16 @@ class Terrain(unittest.TestCase):
         self.assertGreaterEqual(same / total, 0.75, f'{same}/{total}')
         self.assertLessEqual(bad / pairs, 0.05, f'{bad}/{pairs} unseen seams')
 
+    def test_diagonal_pair_tables_learned(self):
+        """NE/NW/SE/SW tables exist and the tunable diagonal weight is accepted (default 0)."""
+        grid, pair = load(self.repo, 'PalletTown_Frlg')
+        rules = Rules(self.repo, pair)
+        for table in (rules.ne, rules.nw, rules.se, rules.sw):
+            self.assertTrue(table)
+        targets = {(5, 5): rules.material(grid.at(5, 5))}
+        self.assertEqual(set(solve(grid, rules, targets, margin=0)), set(targets))
+        self.assertEqual(set(solve(grid, rules, targets, margin=0, diag_weight=0.5)), set(targets))
+
     def test_river_and_resize_fill_terrain(self):
         self.run_terrain('river', 'Route1_Frlg', '3,22', '8,22', 'width=2')
         grid, pair = load(self.repo, 'Route1_Frlg')

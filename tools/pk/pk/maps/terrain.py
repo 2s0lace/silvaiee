@@ -24,6 +24,11 @@ class Rules:
         self.pair = pair
         key = (pair.primary['symbol'], pair.secondary['symbol'])
         self.h, self.v, self.freq, self.by_mat = {}, {}, {}, {}
+        # Diagonal pair tables (NE/NW/SE/SW), keyed (cell, diagonal neighbour in that compass
+        # direction). They are only scored when solve(diag_weight=...) is non-zero; the default
+        # weight is 0 until the acceptance test proves them. Corners (outer/inner) show up here,
+        # where 4-neighbour scoring cannot see them.
+        self.ne, self.nw, self.se, self.sw = {}, {}, {}, {}
         self.layouts = 0
         for layout in repo.layouts().values():
             if (layout.get('primary_tileset'), layout.get('secondary_tileset')) != key:
@@ -45,6 +50,18 @@ class Rules:
                     if y + 1 < h:
                         k = (a[0], cells[(y + 1) * w + x][0])
                         self.v[k] = self.v.get(k, 0) + 1
+                    if x + 1 < w and y > 0:
+                        k = (a[0], cells[(y - 1) * w + x + 1][0])
+                        self.ne[k] = self.ne.get(k, 0) + 1
+                    if x > 0 and y > 0:
+                        k = (a[0], cells[(y - 1) * w + x - 1][0])
+                        self.nw[k] = self.nw.get(k, 0) + 1
+                    if x + 1 < w and y + 1 < h:
+                        k = (a[0], cells[(y + 1) * w + x + 1][0])
+                        self.se[k] = self.se.get(k, 0) + 1
+                    if x > 0 and y + 1 < h:
+                        k = (a[0], cells[(y + 1) * w + x - 1][0])
+                        self.sw[k] = self.sw.get(k, 0) + 1
         # Named metatiles join their tag's material even if vanilla never used them.
         for ts in (pair.primary, pair.secondary):
             for hexid, info in pair.names(ts).items():
@@ -62,7 +79,7 @@ class Rules:
 
 
 def solve(grid, rules, targets, margin=1, passes=6, local_weight=0.3, frozen=frozenset(),
-          choices=None, unary=None):
+          choices=None, unary=None, diag_weight=0.0):
     """targets: {(x,y): material}. Returns {(x,y): metatile} for targets + margin ring.
 
     Prior = 0.05*log(vanilla frequency) + local_weight*log(frequency in this map outside the
@@ -96,6 +113,18 @@ def solve(grid, rules, targets, margin=1, passes=6, local_weight=0.3, frozen=fro
                                       f'known: {" ".join(sorted(rules.by_mat))}')
         cand[p] = options
     bonus = unary if unary else (lambda m, p: 0.0)
+    def diag_score(m, x, y, get):
+        """Diagonal (corner) agreement, weighted by diag_weight (0 = off, the default)."""
+        if not diag_weight:
+            return 0.0
+        s = 0.0
+        for dx, dy, table in ((1, -1, rules.ne), (-1, -1, rules.nw), (1, 1, rules.se), (-1, 1, rules.sw)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < grid.w and 0 <= ny < grid.h:
+                n = get(nx, ny)
+                if n is not None:
+                    s += rules.pair_score(table, m, n)
+        return diag_weight * s
     # Greedy initialisation from the outside in: each cell is chosen against the neighbours that
     # are already fixed (untouched map cells or cells assigned earlier). This avoids most of the
     # local optima a plain row-by-row start falls into.
@@ -122,6 +151,7 @@ def solve(grid, rules, targets, margin=1, passes=6, local_weight=0.3, frozen=fro
                 n = known(nx, ny)
                 if n is not None:
                     s += rules.pair_score(table, n, m) if first else rules.pair_score(table, m, n)
+            s += diag_score(m, x, y, known)
             if best_score is None or s > best_score or (s == best_score and m < best):
                 best, best_score = m, s
         current[p] = best
@@ -141,6 +171,7 @@ def solve(grid, rules, targets, margin=1, passes=6, local_weight=0.3, frozen=fro
                     s += rules.pair_score(rules.v, get(x, y - 1), m)
                 if y + 1 < grid.h:
                     s += rules.pair_score(rules.v, m, get(x, y + 1))
+                s += diag_score(m, x, y, get)
                 if best_score is None or s > best_score or (s == best_score and m < best):
                     best, best_score = m, s
             if best != current[(x, y)]:

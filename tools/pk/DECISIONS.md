@@ -451,3 +451,32 @@
 - AGENT.md gained one line (36 lines) and help/map.md documents the format; `pk help` still equals
   AGENT.md (test_help_matches_agent).
 - Full suite: **112 tests, 1 failure** (map lint; step 5), 783 s.
+
+## Maintainer round 1 — step 2: diagonal solver — TARGET MISSED (2026-10-12)
+- Rules now learns four diagonal pair tables (ne/nw/se/sw), keyed (cell, diagonal neighbour in that
+  compass direction). solve() takes `diag_weight` (default 0); it adds `diag_weight * log(count+0.01)`
+  for the four in-bounds diagonal neighbours, in both the greedy init and the ICM passes.
+- Acceptance test from the step-0 baseline (same maps, seed 7, natural materials incl. meadow/lawn/path),
+  measured with a throwaway script calling the same code as test_solver_reproduces_natural_vanilla_terrain:
+
+  | diag_weight | exact | unseen seams |
+  |---|---|---|
+  | 0.0 (baseline) | 91.27% | 1.46% (43/2940) |
+  | 0.1 | 91.35% | 1.43% |
+  | 0.2 | **92.24%** | 1.02% |
+  | 0.3 | 92.08% | 0.99% |
+  | 0.5 | 92.16% | 1.05% |
+  | 0.75 | 92.16% | **0.85% (25/2940)** |
+  | 1.0 | 91.35% | 1.19% |
+
+- **The target is missed.** Target was at least +4 percentage points exact over the 91.27% baseline
+  (i.e. >=95.27%); the best weight (0.2) reaches 92.24%, only +0.97 pp. Seams do improve (never worse),
+  but exact does not come close. So the default stays **0** (diagonals off) and no threshold was
+  loosened. The reason matches DECISIONS milestone 4b: the residual misses are ground-variant choices
+  (path vs grass vs lawn), which a corner term cannot fix; corners were never the bottleneck at this
+  material resolution.
+- test_terrain.test_diagonal_pair_tables_learned asserts the four tables are learned and that
+  diag_weight=0.5 is accepted. Full suite: **113 tests, 1 failure** (map lint; step 5), 769 s.
+- Reported as a miss per the task rule ("If a number misses its target, STOP and report the miss"),
+  rather than papering over it. The diagonal code is committed with the default weight 0; steps 3-5
+  do not depend on it.
