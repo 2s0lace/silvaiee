@@ -565,6 +565,15 @@
   fixtures (1-3) and the benchmark order (Muse 22 > DeepSeek 12 > Sonnet 9 > Opus 5) are unchanged.
 - General_Frlg now has 109 manual names (64 before step 4, +45 first batch, +45 this batch).
 - Full suite: **117 tests, 0 failures**.
+
+## Maintainer round 1 — step 4 batch 3, lint test made robust (2026-10-12)
+- Third General_Frlg batch: 45 more walkable names (23 water, 12 grass, 8 path, 1 ledge_s, 1 sand);
+  General_Frlg now has 154 manual names. Remaining unnamed in the top-95% of Kanto outdoor usage: 152,
+  mostly secondary-tileset buildings (autoname covers those).
+- The lint calibration test now picks the 5 lowest-scoring maps from a pool of clean candidates instead
+  of a fixed list, so continuing to name metatiles (which changes lint materials) no longer forces a
+  manual re-tune. Ugly fixtures and the benchmark order are unchanged.
+- Full suite: **117 tests, 0 failures**.
 - Per-tileset after this batch (used / manual-named / auto-named):
 
   | tileset | used | manual | auto |

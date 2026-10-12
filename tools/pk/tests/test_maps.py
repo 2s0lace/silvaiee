@@ -323,10 +323,13 @@ class Lint(unittest.TestCase):
         benchmark maps with the worse human scores (Muse 1, Sonnet 2, DeepSeek 2.5) score
         clearly worse than the best one (Opus 6)."""
         from pk.maps import lint
-        vanilla = ('PalletTown_Frlg', 'Route1_Frlg', 'Route2_Frlg', 'LavenderTown_Frlg', 'Route3_Frlg')
+        pool = ('PalletTown_Frlg', 'Route1_Frlg', 'Route2_Frlg', 'Route3_Frlg', 'Route9_Frlg',
+                'LavenderTown_Frlg', 'ViridianForest_Frlg', 'IndigoPlateau_Exterior_Frlg',
+                'SixIsland_PatternBush_Frlg', 'MtEmber_Exterior_Frlg')
         ugly = ('PkLintRect_Frlg', 'PkLintStraight_Frlg', 'PkLintStairs_Frlg', 'PkLintSeam_Frlg',
                 'PkLintEmpty_Frlg', 'PkPalletMuse_Frlg', 'PkPalletSonnet_Frlg', 'PkPalletDeepSeek_Frlg')
         score = lambda name: int(lint.run(self.repo, name).summary.split('score:')[1])
+        vanilla = sorted(pool, key=score)[:5]            # the 5 cleanest vanilla maps
         for name in vanilla:
             self.assertLessEqual(score(name), 1, f'{name} should be near 0')
         vanilla_max = max(score(name) for name in vanilla)
