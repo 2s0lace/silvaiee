@@ -173,9 +173,15 @@ class Meta(MapTest):
         self.assertEqual(self.cells()[3 * 24 + 3][0], 0x2A3)
 
     def test_autoname_does_not_override_manual(self):
+        # The PalletTown pair is fully manually named in the shipped sidecar, so trim it first
+        # to give autoname unnamed metatiles: the point is that it names those and leaves
+        # manual names (here 0x2A3 house_door) alone.
+        path = 'tools/pk/data/metatiles/gTileset_PalletTown.json'
+        trimmed = {k: v for k, v in json.loads(self.repo.read(path)).items() if k in ('2A3', '2A4')}
+        self.tx.stage(path, (json.dumps(trimmed, indent=1, sort_keys=True) + '\n').encode('utf-8'))
         meta.command(self.repo, self.tx, ['name', MAP, '0x2A3', 'house_door'], {}, pagination)
         meta.command(self.repo, self.tx, ['autoname', MAP], {}, pagination)
-        names = json.loads(self.tx.writes['tools/pk/data/metatiles/gTileset_PalletTown.json'])
+        names = json.loads(self.tx.writes[path])
         self.assertEqual(names['2A3']['name'], 'house_door')
         self.assertTrue(any(v.get('auto') for v in names.values()))
 

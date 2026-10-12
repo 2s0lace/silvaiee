@@ -52,12 +52,15 @@ class Terrain(unittest.TestCase):
                 self.assertEqual(a, b, (x, y))
 
     def test_solver_reproduces_natural_vanilla_terrain(self):
-        """Erase 5x5 windows of vanilla terrain (ground/water/grass/sand/ledges only), keep
-        only their materials, re-solve. Measured when written: 81% exact, 1.7% unseen seams."""
+        """Erase 5x5 windows of vanilla terrain (flat ground variants, water, ledges only), keep
+        only their materials, re-solve. Measured when written: 81% exact, 1.7% unseen seams.
+        The ground variants (meadow, lawn, path) are material tags added after that measurement;
+        including them is what the tags were for (see DECISIONS, milestone 4b)."""
         from pk.maps.terrain import unseen
         random.seed(7)
         total = same = pairs = bad = 0
-        natural = {'ground', 'water', 'grass', 'sand', 'ledge_s', 'ledge_n', 'ledge_e', 'ledge_w'}
+        natural = {'ground', 'water', 'grass', 'sand', 'ledge_s', 'ledge_n', 'ledge_e', 'ledge_w',
+                   'meadow', 'lawn', 'path'}
         for name in ('PalletTown_Frlg', 'Route1_Frlg', 'Route22_Frlg', 'ViridianForest_Frlg', 'Route2_Frlg',
                      'CeruleanCity_Frlg', 'Route24_Frlg'):
             grid, pair = load(self.repo, name)

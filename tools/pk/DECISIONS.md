@@ -407,3 +407,27 @@
 - Checks scoped to towns/cities (dash_types, straight_types, empty_types) because vanilla routes/
   caves legitimately keep long straight natural edges and blank blocks; RECT skips components that
   touch a map border (vanilla shorelines/ponds) and EMPTY skips windows that are mostly water/solid.
+
+## Maintainer round 1 — step 0: clean baseline (2026-10-12)
+- Removed the leftover TEST_LASS test NPC from the real PalletTown_Frlg: `pk ev rm PalletTown_Frlg obj#3`
+  (it came from journal 59), and deleted the script/text block it left in scripts.inc
+  (PalletTown_EventScript_Auto_1, PalletTown_Text_Auto_1) by hand — pk has no text rm. Nothing else in
+  that map was touched.
+- The ~30 PalletTown metatiles named `meadowXXX` with tag `meadow` (journals 155-193, 222-223), and the
+  General_Frlg `path_*`/`lawn_*` tags (journal 145, 95-96), are deliberate, not wrong: materials come
+  from the first tag, and the tags separate flat-ground variants the solver otherwise cannot tell
+  apart (DECISIONS milestone 4b says exactly this). Manual names were left alone.
+- Two stale test assumptions were fixed (not the data):
+  - test_solver_reproduces_natural_vanilla_terrain: the natural-material set lacked `meadow`, `lawn`
+    and `path`. Adding them re-admits the tagged ground windows. Measured now (same seed 7, 7 maps,
+    40 windows each): **1225 samples, 91.3% exact, 1.5% unseen seams (43/2940)** — better than the
+    stale "81% / 1.7%", because the finer materials make the target metatile unambiguous.
+  - test_autoname_does_not_override_manual: the PalletTown pair is now fully manually named, so
+    autoname had nothing to name and the "at least one auto name" assertion failed. The test now
+    trims the sidecar in the transaction first, then checks autoname names the unnamed cells and
+    keeps the manual 0x2A3.
+- test_core.RealFormats.test_structural_check hard-coded (939, 785); 12 benchmark PkPallet_* maps plus
+  2 others were added since. It now derives the expected counts from the files.
+- BASELINE full suite (`python -B -m unittest discover tools/pk/tests`): **110 tests, 1 failure**
+  (test_vanilla_is_clean_and_draft2_is_worse — map lint, fixed in step 5), 764 s.
+- `pk map lint` still prints WARN BROKEN; expected until step 5.

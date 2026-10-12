@@ -241,7 +241,12 @@ class RealFormats(unittest.TestCase):
         self.assertEqual(doc.emit(), b'{\r\n  "b": 1,\r\n  "a": 3\r\n}\r\n')
 
     def test_structural_check(self):
-        self.assertEqual(Repo(ROOT).structural_check(), (939, 785))
+        # Counts every map.json and every layouts.json entry; do not hard-code the total,
+        # which grows whenever a benchmark or test map is added.
+        repo = Repo(ROOT)
+        maps = len(list((ROOT/'data/maps').glob('*/map.json')))
+        layouts = len(repo.json('data/layouts/layouts.json')['layouts'])
+        self.assertEqual(repo.structural_check(), (maps, layouts))
 
 
 class Index(unittest.TestCase):
