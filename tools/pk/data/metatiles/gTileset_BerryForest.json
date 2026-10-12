@@ -1,154 +1,154 @@
 {
  "281": {
   "auto": true,
-  "name": "ground_1",
+  "name": "ground_127",
   "tags": [
    "ground"
   ]
  },
  "282": {
   "auto": true,
-  "name": "ground_2",
+  "name": "ground_128",
   "tags": [
    "ground"
   ]
  },
  "284": {
   "auto": true,
-  "name": "grass_1",
+  "name": "grass_10",
   "tags": [
    "grass"
   ]
  },
  "288": {
   "auto": true,
-  "name": "solid_1",
+  "name": "solid_220",
   "tags": [
    "solid"
   ]
  },
  "28A": {
   "auto": true,
-  "name": "solid_2",
+  "name": "solid_221",
   "tags": [
    "solid"
   ]
  },
  "290": {
   "auto": true,
-  "name": "solid_3",
+  "name": "solid_222",
   "tags": [
    "solid"
   ]
  },
  "291": {
   "auto": true,
-  "name": "solid_4",
+  "name": "solid_223",
   "tags": [
    "solid"
   ]
  },
  "292": {
   "auto": true,
-  "name": "solid_5",
+  "name": "solid_224",
   "tags": [
    "solid"
   ]
  },
  "295": {
   "auto": true,
-  "name": "door_1",
+  "name": "door_11",
   "tags": [
    "door"
   ]
  },
  "297": {
   "auto": true,
-  "name": "door_2",
+  "name": "door_12",
   "tags": [
    "door"
   ]
  },
  "298": {
   "auto": true,
-  "name": "solid_6",
+  "name": "solid_225",
   "tags": [
    "solid"
   ]
  },
  "299": {
   "auto": true,
-  "name": "solid_7",
+  "name": "solid_226",
   "tags": [
    "solid"
   ]
  },
  "29A": {
   "auto": true,
-  "name": "solid_8",
+  "name": "solid_227",
   "tags": [
    "solid"
   ]
  },
  "29B": {
   "auto": true,
-  "name": "door_3",
+  "name": "door_13",
   "tags": [
    "door"
   ]
  },
  "29C": {
   "auto": true,
-  "name": "door_4",
+  "name": "door_14",
   "tags": [
    "door"
   ]
  },
  "29F": {
   "auto": true,
-  "name": "door_5",
+  "name": "door_15",
   "tags": [
    "door"
   ]
  },
  "2A0": {
   "auto": true,
-  "name": "solid_9",
+  "name": "solid_228",
   "tags": [
    "solid"
   ]
  },
  "2A1": {
   "auto": true,
-  "name": "solid_10",
+  "name": "solid_229",
   "tags": [
    "solid"
   ]
  },
  "2A2": {
   "auto": true,
-  "name": "solid_11",
+  "name": "solid_230",
   "tags": [
    "solid"
   ]
  },
  "2A3": {
   "auto": true,
-  "name": "solid_12",
+  "name": "solid_231",
   "tags": [
    "solid"
   ]
  },
  "2A4": {
   "auto": true,
-  "name": "solid_13",
+  "name": "solid_232",
   "tags": [
    "solid"
   ]
  },
  "2A5": {
   "auto": true,
-  "name": "solid_14",
+  "name": "solid_233",
   "tags": [
    "solid"
   ]

@@ -65,7 +65,9 @@ class Terrain(unittest.TestCase):
                      'CeruleanCity_Frlg', 'Route24_Frlg'):
             grid, pair = load(self.repo, name)
             rules = Rules(self.repo, pair)
-            for _ in range(40):
+            # Once trees and walls are tagged (step 4) most windows contain a non-natural cell and
+            # are skipped, so sample more per map to keep >1000 accepted windows.
+            for _ in range(150):
                 x0, y0 = random.randrange(1, grid.w - 6), random.randrange(1, grid.h - 6)
                 window = [(x, y) for y in range(y0, y0 + 5) for x in range(x0, x0 + 5)]
                 mats = {p: rules.material(grid.at(*p)) for p in window}

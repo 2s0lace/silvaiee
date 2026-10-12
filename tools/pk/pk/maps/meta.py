@@ -36,8 +36,11 @@ def save_names(repo, tx, pair, ts):
 
 
 def autoname(repo, tx, pair, overwrite=False):
-    """Name metatiles from behaviours and vanilla usage; never replaces a manual name."""
+    """Name metatiles from behaviours and vanilla usage; never replaces a manual name.
+    Generated names never collide with an existing name (manual or auto) of the pair."""
     stats = usage(repo, pair)
+    existing = {v['name'] for ts in (pair.primary, pair.secondary)
+                for v in pair.names(ts).values() if v.get('name')}
     counters, named = {}, 0
     for mt in all_ids(pair):
         ts = pair.owner(mt)
@@ -60,8 +63,13 @@ def autoname(repo, tx, pair, overwrite=False):
             label = 'solid' if solid >= 0.8 else 'ground' if solid <= 0.2 else None
             if label is None:
                 continue
-        counters[label] = counters.get(label, 0) + 1
-        names[key] = dict(name=f'{label}_{counters[label]}', tags=[label], auto=True)
+        while True:
+            counters[label] = counters.get(label, 0) + 1
+            name = f'{label}_{counters[label]}'
+            if name not in existing:
+                break
+        existing.add(name)
+        names[key] = dict(name=name, tags=[label], auto=True)
         named += 1
     for ts in (pair.primary, pair.secondary):
         save_names(repo, tx, pair, ts)

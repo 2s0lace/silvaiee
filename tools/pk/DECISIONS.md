@@ -517,10 +517,20 @@
 - Ran `pk meta autoname` for General_Frlg plus every one of the 16 secondaries (17 sidecar files).
   Names come from behavior and >=80% vanilla usage; manual names are never touched.
 - Named the FIRST tileset (gTileset_General_Frlg), top 45 used metatiles with no manual name, in one
-  batch: water (behavior), tall_grass, sand, ledge_s, and path vs grass split by the average colour
-  of `meta.draw` (green => grass, tan/brown => path; grey/ambiguous skipped). Tags are the material.
-  Edge/corner/inner-corner sub-tags were NOT attempted: the autotile variant cannot be read from a
-  single tile without neighbour context. This is the open question for the owner's review.
+  batch. Classification order: behaviour first (water, tall_grass, sand, ledge_*), then the dominant
+  vanilla collision (>=80% solid => `tree` if it is one of the 2x2 tree metatiles 0x14/0x17/0x1C/0x1F,
+  else `solid`), and only for walkable cells the average colour of `meta.draw` (green => grass,
+  tan/brown => path; grey/ambiguous skipped). Tags are the material.
+  - A first attempt classified by colour alone and tagged solid tree/wall metatiles (0x071, 0x014,
+    0x01C, ...) as grass/path; that is wrong (they are 100% solid). Collision must come before colour.
+  - Edge/corner/inner-corner sub-tags were NOT attempted: the autotile variant cannot be read from a
+    single tile without neighbour context. This is the open question for the owner's review.
+- Bug found and fixed in `meta autoname`: generated `label_N` names did not check existing names, so
+  an auto name could duplicate a manual one (e.g. two `water_1`). It now skips any name already used
+  by the pair. The whole step-4 batch was undone and redone after the fix; no duplicate names remain.
+- The corrected materials moved the terrain acceptance test: fewer windows are "natural" once trees
+  and walls are tagged, so the test samples 150 windows/map (was 40) to keep >1000 accepted windows.
+  Measured now: 1775 windows, 89.0% exact, 2.5% unseen seams (both inside the test's 75%/5% bounds).
 - Per-tileset after this batch (used / manual-named / auto-named):
 
   | tileset | used | manual | auto |
