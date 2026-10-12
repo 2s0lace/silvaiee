@@ -318,15 +318,23 @@ class Lint(unittest.TestCase):
         self.assertEqual(lint.empty(dict(meta, marks={(8, 5): 'o'}), grid, FakePair(), cfg), ([], 0),
                          'event cells count as decoration')
 
-    @unittest.skip('map lint is uncalibrated (README: Known issues); needs a set of ugly reference maps')
-    def test_vanilla_is_clean_and_draft2_is_worse(self):
+    def test_ugly_scores_above_vanilla(self):
+        """Calibration: every deliberately ugly map scores above every vanilla map, and the
+        benchmark maps with the worse human scores (Muse 1, Sonnet 2, DeepSeek 2.5) score
+        clearly worse than the best one (Opus 6)."""
         from pk.maps import lint
-        for name, score in (('PalletTown_Frlg', 0), ('PkPalletDraft_Frlg', 0)):
-            self.assertEqual(f'lint {name} seams:0 stairs:0 rects:0 empty:0 score:{score}',
-                             lint.run(self.repo, name).summary, name)
-        bad = lint.run(self.repo, 'PkPalletDraft2_Frlg')
-        self.assertIn('stairs:', bad.summary)
-        self.assertTrue(len([r for r in bad.data if 'dash:' in r]) >= 1, bad.render())
+        vanilla = ('PalletTown_Frlg', 'Route1_Frlg', 'Route2_Frlg', 'LavenderTown_Frlg', 'ViridianForest_Frlg')
+        ugly = ('PkLintRect_Frlg', 'PkLintStraight_Frlg', 'PkLintStairs_Frlg', 'PkLintSeam_Frlg',
+                'PkLintEmpty_Frlg', 'PkPalletMuse_Frlg', 'PkPalletSonnet_Frlg', 'PkPalletDeepSeek_Frlg')
+        score = lambda name: int(lint.run(self.repo, name).summary.split('score:')[1])
+        for name in vanilla:
+            self.assertLessEqual(score(name), 1, f'{name} should be near 0')
+        vanilla_max = max(score(name) for name in vanilla)
+        for name in ugly:
+            self.assertGreater(score(name), vanilla_max, f'{name} should beat vanilla')
+        opus = score('PkPalletOpus_Frlg')
+        for name in ('PkPalletMuse_Frlg', 'PkPalletSonnet_Frlg', 'PkPalletDeepSeek_Frlg'):
+            self.assertGreater(score(name), opus, f'{name} should beat Opus ({opus})')
 
 
 if __name__ == '__main__':

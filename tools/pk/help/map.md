@@ -11,8 +11,8 @@ Example: "layer coll by class: #=1 .=0; exceptions N", followed by "yy| x=v ..."
 Exceptions override defaults, including every event-overlay cell; --no-events needs only differing values.
 More than 10% exceptions: full grid for that layer. Ties use the lower value; elev is hexadecimal.
 Parse symbol=value from the right (counter symbol: ==0); split the header at "; exceptions ".
-pk map lint MAP (read-only; thresholds in tools/pk/data/lint_map.json)
- BROKEN: thresholds are far too loose; it scores 0 on visibly ugly maps. Judge renders instead.
+pk map lint MAP (read-only; thresholds in tools/pk/data/lint_map.json; 0 is clean)
+ RARE: a shore (water/sand) boundary whose metatile pair occurs <= rare_max times in vanilla.
  WARN SEAM h|v 0x123-0x2A3 @x,y: adjacent metatiles never seen in vanilla layouts of this tileset pair (terrain.Rules).
  WARN STAIR pair span run:n: a straight natural edge longer than straight_max (towns/cities only).
  WARN STAIR pair span steps:n: stair_min_steps equal runs joining with a constant one-tile shift.

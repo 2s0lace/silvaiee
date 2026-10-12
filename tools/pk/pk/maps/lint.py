@@ -1,13 +1,11 @@
 """pk map lint: visual ugliness so cheap models can fix maps without judging images.
 
-KNOWN BROKEN: the thresholds are so loose that it reports score 0 on every map, ugly ones included.
-It needs recalibration against a set of deliberately ugly maps (see README "Known issues").
-
 Reuses the terrain model (DECISIONS.md 4b): the material of a cell is the class-view label
 (pk map show) or the first tag of a named metatile, and SEAM compares metatile pairs against
 the same vanilla adjacency statistics the terrain solver learned (terrain.Rules). Thresholds
-live in tools/pk/data/lint_map.json; calibrated until every vanilla Kanto FRLG map scores
-near zero.
+live in tools/pk/data/lint_map.json; calibrated so every deliberately ugly map (rectangular
+ponds, staircase shores, unseen seams, empty screens, and the weaker PkPallet benchmark drafts)
+scores above the clean vanilla maps (test_maps.Lint.test_ugly_scores_above_vanilla).
 """
 import json
 
@@ -22,6 +20,7 @@ LINT_JSON = 'tools/pk/data/lint_map.json'
 CHECKS = [('natural', list), ('decor_tags', list), ('stair_min_steps', int), ('stair_min_run', int),
           ('straight_max', int), ('straight_types', list), ('dash_min_run', int), ('dash_min_gap', int),
           ('dash_types', list),
+          ('rare_mats', list), ('rare_max', int),
           ('rect_min', int), ('rect_fill', (int, float)), ('rect_border', bool),
           ('empty_w', int), ('empty_h', int), ('empty_margin', int), ('empty_types', list),
           ('empty_solid', bool), ('empty_water_frac', (int, float)), ('max_lines', int)]
@@ -159,6 +158,33 @@ def stairs(meta, grid, cfg):
     return rows, counted
 
 
+def rare(meta, grid, cfg):
+    """Rare shore adjacencies: a boundary between two natural cells whose metatile pair occurs
+    at most rare_max times in the vanilla layouts of the pair. Hand-made shores pair their tiles
+    with whatever vanilla put there; a generated shore often pairs tiles that never meet."""
+    mats = set(cfg['rare_mats'])
+    rules = meta['rules']
+    mat = meta['mat']
+    rows, counted = [], 0
+    for y in range(grid.h):
+        for x in range(grid.w - 1):
+            if not ({mat[(x, y)], mat[(x + 1, y)]} & mats):
+                continue
+            a, b = grid.at(x, y)[0], grid.at(x + 1, y)[0]
+            if rules.h.get((a, b), 0) <= cfg['rare_max']:
+                rows.append(f'WARN RARE h 0x{a:03X}-0x{b:03X} @{x},{y}')
+                counted += 1
+    for y in range(grid.h - 1):
+        for x in range(grid.w):
+            if not ({mat[(x, y)], mat[(x, y + 1)]} & mats):
+                continue
+            a, b = grid.at(x, y)[0], grid.at(x, y + 1)[0]
+            if rules.v.get((a, b), 0) <= cfg['rare_max']:
+                rows.append(f'WARN RARE v 0x{a:03X}-0x{b:03X} @{x},{y}')
+                counted += 1
+    return rows, counted
+
+
 def rects(meta, grid, cfg):
     natural = set(meta['natural'])
     mat = meta['mat']
@@ -221,14 +247,16 @@ def run(repo, query):
     rules = pair_rules(repo, pair)
     cfg = thresholds(repo)
     mat = {(x, y): rules.material(grid.at(x, y)) for y in range(grid.h) for x in range(grid.w)}
-    meta = dict(cfg, mat=mat, marks=events(grid.data),
+    meta = dict(cfg, mat=mat, marks=events(grid.data), rules=rules,
                 map_type=grid.data.get('map_type'))
     cap = cfg['max_lines']
     seam_rows = seams(grid, rules)
     stair_rows, stair_n = stairs(meta, grid, cfg)
+    rare_rows, rare_n = rare(meta, grid, cfg)
     rect_rows, rect_n = rects(meta, grid, cfg)
     empty_rows, empty_n = empty(meta, grid, pair, cfg)
-    counts = f'seams:{len(seam_rows)} stairs:{stair_n} rects:{rect_n} empty:{empty_n}'
-    rows = sorted(seam_rows + stair_rows)[:cap] + sorted(rect_rows, key=lambda r: r[9:])[:cap] + empty_rows[:cap]
-    rows = rows + ['WARN BROKEN map lint is uncalibrated and misses most problems; a score of 0 means nothing']
-    return Result(f'lint {grid.name} {counts} score:{len(seam_rows) + stair_n + rect_n + empty_n}', rows)
+    counts = f'seams:{len(seam_rows)} stairs:{stair_n} rare:{rare_n} rects:{rect_n} empty:{empty_n}'
+    rows = sorted(seam_rows + stair_rows)[:cap] + rare_rows[:cap] + \
+        sorted(rect_rows, key=lambda r: r[9:])[:cap] + empty_rows[:cap]
+    return Result(f'lint {grid.name} {counts} '
+                  f'score:{len(seam_rows) + stair_n + rare_n + rect_n + empty_n}', rows)

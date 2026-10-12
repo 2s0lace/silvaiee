@@ -1,4 +1,6 @@
-{ "natural": ["water", "sand", "grass", "tree", "tall_grass"],
+{ "natural": ["water", "sand", "grass", "tall_grass"],
+  "rare_mats": ["water", "sand"],
+  "rare_max": 1,
   "decor_tags": ["tree", "flowers", "fence", "sign"],
   "stair_min_steps": 4, "stair_min_run": 2,
   "straight_max": 16,

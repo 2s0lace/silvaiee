@@ -145,9 +145,10 @@ Mountains and highlands, animated tiles, self-perfecting maps and art, and then 
 See [ROADMAP.md](ROADMAP.md). Contributions are welcome; each round has clear, measurable targets.
 
 ## Known issues
-- **`pk map lint` is broken.** It is meant to flag ugly maps (seams, staircase shorelines, rectangular patches,
-  empty screens), but its thresholds were loosened until it reports `score:0` on everything, ugly maps
-  included. Don't trust it. Recalibrating it against a set of deliberately ugly maps would be a great first PR.
+  - **`pk map lint` is calibrated for FRLG Kanto.** It flags seams, staircase shorelines, rare shore
+    adjacencies, rectangular patches and empty screens; `0` is clean. The thresholds live in
+    `tools/pk/data/lint_map.json` and are tuned for this repo's tilesets, so other hacks should re-run
+    the calibration.
 - **`pk map paintover`** (snapping a painted image back onto metatiles) is experimental and was never validated
   on real AI paintings.
 - **FRLG only.** Emerald/RSE maps are not supported.
