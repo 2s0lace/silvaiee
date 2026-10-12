@@ -19,7 +19,7 @@ from pk.core.build import run as build
 from pk.text.ops import command as text_command
 from pk.maps import edit as map_edit, meta as map_meta, events as map_events, check as map_check
 from pk.maps import resize as map_resize, create as map_create, terrain as map_terrain, lint as map_lint
-from pk.maps import paintover as map_paintover
+from pk.maps import paintover as map_paintover, export as map_export
 from pk.art import ops as art_ops
 from pk.bp import ops as bp_ops
 
@@ -101,6 +101,10 @@ def dispatch(repo, tx, argv):
             result = listing(repo, args[1] if len(args) == 2 else '', *pagination(opts))
         elif args and args[0] == 'lint' and len(args) == 2:
             result = map_lint.run(repo, args[1])
+        elif args and args[0] == 'export' and len(args) == 2:
+            result = map_export.export_map(repo, tx, args[1], opts)
+        elif args and args[0] == 'import' and len(args) == 3:
+            result = map_export.import_map(repo, tx, args[1], args[2], opts)
         elif len(args) == 2 and args[0] == 'info':
             result = info(repo, args[1], *pagination(opts, 6))
         elif args:

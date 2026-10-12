@@ -431,3 +431,23 @@
 - BASELINE full suite (`python -B -m unittest discover tools/pk/tests`): **110 tests, 1 failure**
   (test_vanilla_is_clean_and_draft2_is_worse — map lint, fixed in step 5), 764 s.
 - `pk map lint` still prints WARN BROKEN; expected until step 5.
+
+## Maintainer round 1 — step 1: full-map text round trip (2026-10-12)
+- New `pk map export MAP [--out file]` / `pk map import MAP file [--dry-run]`, module
+  pk/maps/export.py. Format (`pkmap 1`): layout id, tileset pair, size; `grid` then `legend SYM 0xID`
+  and `yy| SYM SYM ...` rows; `coll`/`elev` defaults per metatile symbol plus `coll! x,y=v`
+  exceptions; `border WxH` with `0xID,coll,elev` cells. Export stages the text (default
+  .pk/map/MAP.map) through the journal, so --dry-run and undo work; import writes map.bin and
+  border.bin in one transaction.
+- layers.py: the default+exception computation of `map show --layer all` was extracted into
+  compact_values(sym_of=...), so export keys the same structure on the exact-metatile legend
+  instead of the class symbol. render_by_class output is unchanged (golden + compact tests pass).
+- Symbols: one char from a 93-char pool, two chars beyond that (a whole map can hold up to 1024
+  distinct metatiles; `map show --exact`'s smaller pool would have raised LIMIT).
+- Measured (uncommitted transactions, no disk writes): **all 319 FRLG layouts referenced by maps
+  round-trip with byte-identical map.bin and border.bin, 0 failures**. The committed test
+  test_export.py walks every vanilla FRLG outdoor layout (72 layouts, Pk* benchmark maps excluded)
+  and also checks the header/legend/grid/border lines.
+- AGENT.md gained one line (36 lines) and help/map.md documents the format; `pk help` still equals
+  AGENT.md (test_help_matches_agent).
+- Full suite: **112 tests, 1 failure** (map lint; step 5), 783 s.

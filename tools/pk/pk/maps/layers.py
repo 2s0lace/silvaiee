@@ -111,19 +111,25 @@ def exact_legend(grid, pair, rect):
     return legend
 
 
-def render_by_class(grid, pair, rect, layer, show_events=True):
-    """coll/elev as the dominant value per class symbol plus exceptions (lossless).
-    Event overlays hide the class, so their values must be explicit exceptions.
-    Returns None when exceptions exceed 10% of the visible cells."""
+def compact_values(grid, pair, rect, layer, sym_of=None, show_events=True, cap=0.1):
+    """(defaults, exceptions) for one coll/elev layer, or None when exceptions exceed cap.
+
+    defaults: {symbol: dominant value}; exceptions: sorted [(x, y, value)] where a cell's
+    value differs from its symbol's default. Event overlays hide the class in the class view,
+    so their values are always exceptions. `sym_of(x, y, cell) -> symbol` lets callers key on
+    something else than the class symbol (pk map export keys on the exact-metatile legend)."""
     if layer not in ('coll', 'elev'):
         raise PkError('PARSE', 'compact layer is coll|elev')
     x0, y0, rw, rh = rect
     idx = 1 if layer == 'coll' else 2
+    if sym_of is None:
+        def sym_of(x, y, c):
+            return class_of(pair, c[0], c[1])[0]
     cells = {}
     for y in range(y0, y0 + rh):
         for x in range(x0, x0 + rw):
             c = grid.at(x, y)
-            cells[(x, y)] = (class_of(pair, c[0], c[1])[0], c[idx])
+            cells[(x, y)] = (sym_of(x, y, c), c[idx])
     counts = {}
     for sym, v in cells.values():
         counts.setdefault(sym, {}).setdefault(v, 0)
@@ -132,8 +138,19 @@ def render_by_class(grid, pair, rect, layer, show_events=True):
     marks = events(grid.data) if show_events else {}
     exceptions = [(x, y, v) for (x, y), (sym, v) in cells.items()
                   if v != default[sym] or (x, y) in marks]
-    if len(exceptions) > rw * rh // 10:
+    if cap is not None and len(exceptions) > rw * rh * cap:
         return None
+    return default, exceptions
+
+
+def render_by_class(grid, pair, rect, layer, show_events=True):
+    """coll/elev as the dominant value per class symbol plus exceptions (lossless).
+    Event overlays hide the class, so their values must be explicit exceptions.
+    Returns None when exceptions exceed 10% of the visible cells."""
+    compact = compact_values(grid, pair, rect, layer, show_events=show_events)
+    if compact is None:
+        return None
+    default, exceptions = compact
     fmt = str if layer == 'coll' else (lambda v: f'{v:X}')
     rows = [f'layer {layer} by class: ' + ' '.join(f'{s}={fmt(default[s])}' for s in sorted(default))
             + f'; exceptions {len(exceptions)}']

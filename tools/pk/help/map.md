@@ -45,3 +45,8 @@ pk map resize MAP --add top=n,left=n,right=n,bottom=n (negative crops) | --to Wx
 pk map extend-to MAP NEIGHBOUR (grow along the shared edge until the connection covers the neighbour)
 pk map new NAME --size WxH --tilesets PRIMARY,SECONDARY --fill METATILE [--type town|city|route|indoor|cave]
  [--like MAP (copy header)] [--music MUS_X] [--group gMapGroup_X] (default group gMapGroup_PkNew, appended last)
+pk map export MAP [--out file] (default .pk/map/MAP.map): the whole map as text.
+ pk map import MAP file [--dry-run]: parse it back and write map.bin + border.bin in one transaction.
+ Format: "pkmap 1", layout id, tileset pair, size; "grid" then "legend SYM 0xID" lines and "yy| SYM SYM ..."
+ rows; "coll"/"elev" defaults per metatile symbol plus "coll! x,y=v"/"elev! x,y=v" exceptions; "border WxH"
+ with "0xID,coll,elev" cells. Export then import is byte-identical on every vanilla FRLG outdoor layout.

@@ -1,7 +1,7 @@
-pk: token-efficient LLM interface to a pokeemerald-expansion FRLG project. Details: pk help <noun>.
+pk: token-efficient interface to this FireRed hack (milestones 1-5b). Details: pk help <noun>.
 Run from repo root in ANY shell: python tools/pk/pk.py <command> (also: cmd "pk", PowerShell ".\pk").
 Never open .bin, map.json, scripts.inc or graphics.h directly; use pk.
-Content policy: tools/pk/data/policy.json (+ blueprints/VISION.md if you keep one). Roles: tools/pk/agents/
+Content policy: see blueprints/VISION.md (source of truth). Roles: tools/pk/agents/.
 Do not apply any blueprint to real maps without the owner's explicit approval.
 Output: first line OK or ERR CODE; MORE n = next --offset. --dry-run writes nothing. --json = one object.
 Every write is one journaled transaction: pk log | pk undo [n] (undo again = redo). pk help errors.
@@ -17,6 +17,7 @@ pk map at MAP x,y | pk map paint MAP x,y[,WxH] METATILE | fill | line | grid | c
 pk map paintover MAP IMAGE [--into NEW_MAP] (real metatiles back from a painted image; matching cells frozen)
 pk map resize MAP --add right=8,bottom=4 [--fill extend|border|terrain|METATILE]
 (resize moves events, script coordinates, connections and heal spots; grow right/bottom when possible)
+pk map export MAP [--out file] | pk map import MAP file (lossless text: grid, coll/elev, border.bin)
 pk map extend-to MAP NEIGHBOUR | pk map new NAME --size WxH --tilesets P,S --fill METATILE
 pk terrain brush MAP rect|circle|path ... MATERIAL (water, grass, sand, ground, solid, ledge_s, tags)
 pk terrain river MAP x,y x,y [width=2] | ledge | forest --stamp tree | bake | learn | show
@@ -30,6 +31,6 @@ pk text get LABEL | pk text set LABEL "plain text" | text add | ls | grep | repl
 Plain text is wrapped to 208px, 2 lines per box: || = new box, | = new line. {PLAYER} etc. allowed.
 pk check [MAP|all] [--warnings]: only NEW errors fail (vanilla issues are baselined).
 pk build [--release] (staged, journaled, ~15 min) | pk batch < ops.txt (atomic, one command per line)
-pk index (auto) | Tests: python -B -m unittest discover tools/pk/tests
+pk index (auto) | Tests: C:\Python314\python.exe -B -m unittest discover tools/pk/tests
 Sidecars: tools/pk/data (names, stamps, limits, baseline) and .pk (index, journal, renders).
 Workflow: find -> show/get -> small edit -> check -> (render) -> build. Prefer --dry-run first.
