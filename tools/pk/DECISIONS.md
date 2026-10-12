@@ -509,3 +509,41 @@
   mining, selection, the no-overwrite guard, the overlay, and the three coverage numbers.
 - AGENT.md is 37 lines and `pk help` still equals it; help/map.md and help/stamp.md document the
   new flag and command. Full suite: **117 tests, 1 failure** (map lint; step 5), 763 s.
+
+## Maintainer round 1 — step 4: catalog coverage — FIRST BATCH, PAUSED FOR REVIEW (2026-10-12)
+- Kanto outdoor set = 72 vanilla FRLG layouts (TOWN/CITY/ROUTE/OCEAN_ROUTE, REGION_KANTO),
+  120,799 cells, 16 secondary tilesets (incl. the three SeviiIslands sets, which carry
+  REGION_KANTO in the data). The metatiles making up 95% of that usage number 319.
+- Ran `pk meta autoname` for General_Frlg plus every one of the 16 secondaries (17 sidecar files).
+  Names come from behavior and >=80% vanilla usage; manual names are never touched.
+- Named the FIRST tileset (gTileset_General_Frlg), top 45 used metatiles with no manual name, in one
+  batch: water (behavior), tall_grass, sand, ledge_s, and path vs grass split by the average colour
+  of `meta.draw` (green => grass, tan/brown => path; grey/ambiguous skipped). Tags are the material.
+  Edge/corner/inner-corner sub-tags were NOT attempted: the autotile variant cannot be read from a
+  single tile without neighbour context. This is the open question for the owner's review.
+- Per-tileset after this batch (used / manual-named / auto-named):
+
+  | tileset | used | manual | auto |
+  |---|---|---|---|
+  | gTileset_General_Frlg | 511 | 64 | 447 |
+  | gTileset_PalletTown | 78 | 78 | 0 |
+  | gTileset_ViridianCity | 84 | 0 | 84 |
+  | gTileset_PewterCity | 59 | 0 | 56 |
+  | gTileset_CeruleanCity | 128 | 0 | 128 |
+  | gTileset_VermilionCity | 112 | 0 | 105 |
+  | gTileset_LavenderTown | 195 | 0 | 194 |
+  | gTileset_CeladonCity | 224 | 0 | 224 |
+  | gTileset_FuchsiaCity | 165 | 0 | 164 |
+  | gTileset_SaffronCity | 190 | 0 | 188 |
+  | gTileset_CinnabarIsland | 63 | 0 | 62 |
+  | gTileset_IndigoPlateau | 165 | 0 | 165 |
+  | gTileset_ViridianForest | 38 | 0 | 38 |
+  | gTileset_BerryForest | 20 | 0 | 20 |
+  | gTileset_SeviiIslands123 | 271 | 0 | 264 |
+  | gTileset_SeviiIslands45 | 145 | 0 | 142 |
+  | gTileset_SeviiIslands67 | 212 | 0 | 212 |
+
+- Ten sample names with crops were reported to the owner (water_1 0x12B, water_2 0x1D9, path_1 0x071,
+  tall_grass_1 0x00D, grass_1 0x01C, sand_1 0x115, ledge_s_1 0x087, path_2 0x0D9, grass_6 0x01F,
+  water_7 0x110). Per the task, work STOPS after the first tileset until the owner checks quality.
+- Full suite: **117 tests, 1 failure** (map lint; step 5), 762 s.

@@ -1,8 +1,49 @@
 {
+ "001": {
+  "name": "grass_9",
+  "tags": [
+   "grass"
+  ]
+ },
+ "002": {
+  "auto": true,
+  "name": "solid_1",
+  "tags": [
+   "solid"
+  ]
+ },
+ "003": {
+  "auto": true,
+  "name": "solid_2",
+  "tags": [
+   "solid"
+  ]
+ },
  "004": {
   "name": "flowers_red",
   "tags": [
    "flowers"
+  ]
+ },
+ "005": {
+  "auto": true,
+  "name": "solid_1",
+  "tags": [
+   "solid"
+  ]
+ },
+ "006": {
+  "auto": true,
+  "name": "solid_2",
+  "tags": [
+   "solid"
+  ]
+ },
+ "007": {
+  "auto": true,
+  "name": "solid_3",
+  "tags": [
+   "solid"
   ]
  },
  "008": {
@@ -17,6 +58,33 @@
    "lawn"
   ]
  },
+ "00A": {
+  "auto": true,
+  "name": "grass_1",
+  "tags": [
+   "grass"
+  ]
+ },
+ "00B": {
+  "auto": true,
+  "name": "grass_2",
+  "tags": [
+   "grass"
+  ]
+ },
+ "00C": {
+  "auto": true,
+  "name": "grass_3",
+  "tags": [
+   "grass"
+  ]
+ },
+ "00D": {
+  "name": "tall_grass_1",
+  "tags": [
+   "tall_grass"
+  ]
+ },
  "00E": {
   "name": "lawn_d",
   "tags": [
@@ -29,10 +97,1248 @@
    "lawn"
   ]
  },
+ "010": {
+  "name": "grass_2",
+  "tags": [
+   "grass"
+  ]
+ },
  "011": {
   "name": "lawn_c",
   "tags": [
    "lawn"
+  ]
+ },
+ "012": {
+  "auto": true,
+  "name": "solid_1",
+  "tags": [
+   "solid"
+  ]
+ },
+ "013": {
+  "auto": true,
+  "name": "solid_2",
+  "tags": [
+   "solid"
+  ]
+ },
+ "014": {
+  "name": "grass_3",
+  "tags": [
+   "grass"
+  ]
+ },
+ "015": {
+  "name": "grass_5",
+  "tags": [
+   "grass"
+  ]
+ },
+ "016": {
+  "name": "grass_13",
+  "tags": [
+   "grass"
+  ]
+ },
+ "017": {
+  "name": "grass_10",
+  "tags": [
+   "grass"
+  ]
+ },
+ "018": {
+  "auto": true,
+  "name": "solid_3",
+  "tags": [
+   "solid"
+  ]
+ },
+ "019": {
+  "auto": true,
+  "name": "solid_4",
+  "tags": [
+   "solid"
+  ]
+ },
+ "01A": {
+  "auto": true,
+  "name": "solid_5",
+  "tags": [
+   "solid"
+  ]
+ },
+ "01B": {
+  "auto": true,
+  "name": "solid_1",
+  "tags": [
+   "solid"
+  ]
+ },
+ "01C": {
+  "name": "grass_1",
+  "tags": [
+   "grass"
+  ]
+ },
+ "01D": {
+  "name": "grass_4",
+  "tags": [
+   "grass"
+  ]
+ },
+ "01E": {
+  "name": "grass_7",
+  "tags": [
+   "grass"
+  ]
+ },
+ "01F": {
+  "name": "grass_6",
+  "tags": [
+   "grass"
+  ]
+ },
+ "020": {
+  "auto": true,
+  "name": "solid_6",
+  "tags": [
+   "solid"
+  ]
+ },
+ "021": {
+  "auto": true,
+  "name": "solid_7",
+  "tags": [
+   "solid"
+  ]
+ },
+ "022": {
+  "auto": true,
+  "name": "solid_8",
+  "tags": [
+   "solid"
+  ]
+ },
+ "023": {
+  "auto": true,
+  "name": "solid_2",
+  "tags": [
+   "solid"
+  ]
+ },
+ "024": {
+  "name": "grass_11",
+  "tags": [
+   "grass"
+  ]
+ },
+ "025": {
+  "name": "grass_12",
+  "tags": [
+   "grass"
+  ]
+ },
+ "026": {
+  "auto": true,
+  "name": "solid_3",
+  "tags": [
+   "solid"
+  ]
+ },
+ "027": {
+  "auto": true,
+  "name": "solid_4",
+  "tags": [
+   "solid"
+  ]
+ },
+ "028": {
+  "auto": true,
+  "name": "ground_1",
+  "tags": [
+   "ground"
+  ]
+ },
+ "029": {
+  "auto": true,
+  "name": "ground_2",
+  "tags": [
+   "ground"
+  ]
+ },
+ "02A": {
+  "auto": true,
+  "name": "ground_3",
+  "tags": [
+   "ground"
+  ]
+ },
+ "02B": {
+  "auto": true,
+  "name": "ground_4",
+  "tags": [
+   "ground"
+  ]
+ },
+ "02C": {
+  "auto": true,
+  "name": "ground_5",
+  "tags": [
+   "ground"
+  ]
+ },
+ "02D": {
+  "auto": true,
+  "name": "ground_6",
+  "tags": [
+   "ground"
+  ]
+ },
+ "02F": {
+  "auto": true,
+  "name": "ground_7",
+  "tags": [
+   "ground"
+  ]
+ },
+ "030": {
+  "auto": true,
+  "name": "solid_4",
+  "tags": [
+   "solid"
+  ]
+ },
+ "031": {
+  "auto": true,
+  "name": "solid_5",
+  "tags": [
+   "solid"
+  ]
+ },
+ "032": {
+  "auto": true,
+  "name": "solid_6",
+  "tags": [
+   "solid"
+  ]
+ },
+ "033": {
+  "auto": true,
+  "name": "solid_7",
+  "tags": [
+   "solid"
+  ]
+ },
+ "034": {
+  "auto": true,
+  "name": "solid_8",
+  "tags": [
+   "solid"
+  ]
+ },
+ "035": {
+  "auto": true,
+  "name": "solid_9",
+  "tags": [
+   "solid"
+  ]
+ },
+ "036": {
+  "auto": true,
+  "name": "solid_10",
+  "tags": [
+   "solid"
+  ]
+ },
+ "037": {
+  "auto": true,
+  "name": "solid_11",
+  "tags": [
+   "solid"
+  ]
+ },
+ "038": {
+  "auto": true,
+  "name": "solid_12",
+  "tags": [
+   "solid"
+  ]
+ },
+ "039": {
+  "auto": true,
+  "name": "solid_13",
+  "tags": [
+   "solid"
+  ]
+ },
+ "03A": {
+  "auto": true,
+  "name": "solid_14",
+  "tags": [
+   "solid"
+  ]
+ },
+ "03B": {
+  "auto": true,
+  "name": "solid_15",
+  "tags": [
+   "solid"
+  ]
+ },
+ "03C": {
+  "auto": true,
+  "name": "solid_16",
+  "tags": [
+   "solid"
+  ]
+ },
+ "03D": {
+  "auto": true,
+  "name": "door_1",
+  "tags": [
+   "door"
+  ]
+ },
+ "03F": {
+  "auto": true,
+  "name": "solid_17",
+  "tags": [
+   "solid"
+  ]
+ },
+ "040": {
+  "auto": true,
+  "name": "solid_18",
+  "tags": [
+   "solid"
+  ]
+ },
+ "041": {
+  "auto": true,
+  "name": "solid_19",
+  "tags": [
+   "solid"
+  ]
+ },
+ "042": {
+  "auto": true,
+  "name": "solid_1",
+  "tags": [
+   "solid"
+  ]
+ },
+ "043": {
+  "auto": true,
+  "name": "solid_2",
+  "tags": [
+   "solid"
+  ]
+ },
+ "044": {
+  "auto": true,
+  "name": "solid_1",
+  "tags": [
+   "solid"
+  ]
+ },
+ "045": {
+  "auto": true,
+  "name": "solid_1",
+  "tags": [
+   "solid"
+  ]
+ },
+ "046": {
+  "auto": true,
+  "name": "solid_1",
+  "tags": [
+   "solid"
+  ]
+ },
+ "048": {
+  "auto": true,
+  "name": "solid_20",
+  "tags": [
+   "solid"
+  ]
+ },
+ "049": {
+  "auto": true,
+  "name": "solid_21",
+  "tags": [
+   "solid"
+  ]
+ },
+ "04A": {
+  "auto": true,
+  "name": "solid_22",
+  "tags": [
+   "solid"
+  ]
+ },
+ "04B": {
+  "auto": true,
+  "name": "solid_23",
+  "tags": [
+   "solid"
+  ]
+ },
+ "04C": {
+  "auto": true,
+  "name": "solid_24",
+  "tags": [
+   "solid"
+  ]
+ },
+ "04D": {
+  "auto": true,
+  "name": "solid_25",
+  "tags": [
+   "solid"
+  ]
+ },
+ "04E": {
+  "auto": true,
+  "name": "solid_26",
+  "tags": [
+   "solid"
+  ]
+ },
+ "050": {
+  "auto": true,
+  "name": "solid_27",
+  "tags": [
+   "solid"
+  ]
+ },
+ "051": {
+  "auto": true,
+  "name": "solid_28",
+  "tags": [
+   "solid"
+  ]
+ },
+ "052": {
+  "auto": true,
+  "name": "solid_29",
+  "tags": [
+   "solid"
+  ]
+ },
+ "053": {
+  "auto": true,
+  "name": "solid_30",
+  "tags": [
+   "solid"
+  ]
+ },
+ "054": {
+  "auto": true,
+  "name": "solid_2",
+  "tags": [
+   "solid"
+  ]
+ },
+ "055": {
+  "auto": true,
+  "name": "solid_3",
+  "tags": [
+   "solid"
+  ]
+ },
+ "056": {
+  "auto": true,
+  "name": "ground_1",
+  "tags": [
+   "ground"
+  ]
+ },
+ "057": {
+  "auto": true,
+  "name": "solid_1",
+  "tags": [
+   "solid"
+  ]
+ },
+ "058": {
+  "auto": true,
+  "name": "solid_31",
+  "tags": [
+   "solid"
+  ]
+ },
+ "059": {
+  "auto": true,
+  "name": "solid_32",
+  "tags": [
+   "solid"
+  ]
+ },
+ "05A": {
+  "auto": true,
+  "name": "solid_33",
+  "tags": [
+   "solid"
+  ]
+ },
+ "05B": {
+  "auto": true,
+  "name": "solid_34",
+  "tags": [
+   "solid"
+  ]
+ },
+ "05C": {
+  "auto": true,
+  "name": "solid_35",
+  "tags": [
+   "solid"
+  ]
+ },
+ "05D": {
+  "auto": true,
+  "name": "ground_8",
+  "tags": [
+   "ground"
+  ]
+ },
+ "05E": {
+  "auto": true,
+  "name": "solid_36",
+  "tags": [
+   "solid"
+  ]
+ },
+ "05F": {
+  "auto": true,
+  "name": "solid_2",
+  "tags": [
+   "solid"
+  ]
+ },
+ "060": {
+  "auto": true,
+  "name": "solid_37",
+  "tags": [
+   "solid"
+  ]
+ },
+ "061": {
+  "auto": true,
+  "name": "solid_38",
+  "tags": [
+   "solid"
+  ]
+ },
+ "062": {
+  "auto": true,
+  "name": "door_2",
+  "tags": [
+   "door"
+  ]
+ },
+ "063": {
+  "auto": true,
+  "name": "solid_39",
+  "tags": [
+   "solid"
+  ]
+ },
+ "064": {
+  "auto": true,
+  "name": "solid_40",
+  "tags": [
+   "solid"
+  ]
+ },
+ "065": {
+  "auto": true,
+  "name": "solid_41",
+  "tags": [
+   "solid"
+  ]
+ },
+ "066": {
+  "auto": true,
+  "name": "solid_42",
+  "tags": [
+   "solid"
+  ]
+ },
+ "067": {
+  "auto": true,
+  "name": "solid_4",
+  "tags": [
+   "solid"
+  ]
+ },
+ "068": {
+  "auto": true,
+  "name": "solid_5",
+  "tags": [
+   "solid"
+  ]
+ },
+ "069": {
+  "name": "path_7",
+  "tags": [
+   "path"
+  ]
+ },
+ "06A": {
+  "auto": true,
+  "name": "solid_6",
+  "tags": [
+   "solid"
+  ]
+ },
+ "06B": {
+  "auto": true,
+  "name": "solid_43",
+  "tags": [
+   "solid"
+  ]
+ },
+ "06C": {
+  "name": "path_8",
+  "tags": [
+   "path"
+  ]
+ },
+ "06D": {
+  "auto": true,
+  "name": "solid_44",
+  "tags": [
+   "solid"
+  ]
+ },
+ "06E": {
+  "auto": true,
+  "name": "solid_9",
+  "tags": [
+   "solid"
+  ]
+ },
+ "06F": {
+  "auto": true,
+  "name": "solid_5",
+  "tags": [
+   "solid"
+  ]
+ },
+ "070": {
+  "name": "path_10",
+  "tags": [
+   "path"
+  ]
+ },
+ "071": {
+  "name": "path_1",
+  "tags": [
+   "path"
+  ]
+ },
+ "072": {
+  "name": "path_9",
+  "tags": [
+   "path"
+  ]
+ },
+ "073": {
+  "name": "path_4",
+  "tags": [
+   "path"
+  ]
+ },
+ "074": {
+  "auto": true,
+  "name": "solid_3",
+  "tags": [
+   "solid"
+  ]
+ },
+ "075": {
+  "name": "path_5",
+  "tags": [
+   "path"
+  ]
+ },
+ "078": {
+  "auto": true,
+  "name": "solid_7",
+  "tags": [
+   "solid"
+  ]
+ },
+ "079": {
+  "name": "path_6",
+  "tags": [
+   "path"
+  ]
+ },
+ "07A": {
+  "auto": true,
+  "name": "solid_8",
+  "tags": [
+   "solid"
+  ]
+ },
+ "07B": {
+  "auto": true,
+  "name": "solid_45",
+  "tags": [
+   "solid"
+  ]
+ },
+ "07C": {
+  "name": "path_3",
+  "tags": [
+   "path"
+  ]
+ },
+ "07D": {
+  "auto": true,
+  "name": "solid_46",
+  "tags": [
+   "solid"
+  ]
+ },
+ "080": {
+  "auto": true,
+  "name": "solid_6",
+  "tags": [
+   "solid"
+  ]
+ },
+ "081": {
+  "auto": true,
+  "name": "solid_4",
+  "tags": [
+   "solid"
+  ]
+ },
+ "082": {
+  "auto": true,
+  "name": "solid_5",
+  "tags": [
+   "solid"
+  ]
+ },
+ "083": {
+  "auto": true,
+  "name": "ledge_w_1",
+  "tags": [
+   "ledge_w"
+  ]
+ },
+ "084": {
+  "auto": true,
+  "name": "ledge_e_1",
+  "tags": [
+   "ledge_e"
+  ]
+ },
+ "085": {
+  "auto": true,
+  "name": "ledge_w_2",
+  "tags": [
+   "ledge_w"
+  ]
+ },
+ "086": {
+  "auto": true,
+  "name": "ledge_e_2",
+  "tags": [
+   "ledge_e"
+  ]
+ },
+ "087": {
+  "name": "ledge_s_1",
+  "tags": [
+   "ledge_s"
+  ]
+ },
+ "088": {
+  "auto": true,
+  "name": "solid_6",
+  "tags": [
+   "solid"
+  ]
+ },
+ "089": {
+  "auto": true,
+  "name": "solid_7",
+  "tags": [
+   "solid"
+  ]
+ },
+ "08A": {
+  "auto": true,
+  "name": "solid_8",
+  "tags": [
+   "solid"
+  ]
+ },
+ "08B": {
+  "auto": true,
+  "name": "ledge_w_3",
+  "tags": [
+   "ledge_w"
+  ]
+ },
+ "08C": {
+  "auto": true,
+  "name": "ledge_e_3",
+  "tags": [
+   "ledge_e"
+  ]
+ },
+ "08D": {
+  "auto": true,
+  "name": "solid_7",
+  "tags": [
+   "solid"
+  ]
+ },
+ "08E": {
+  "auto": true,
+  "name": "solid_8",
+  "tags": [
+   "solid"
+  ]
+ },
+ "08F": {
+  "auto": true,
+  "name": "ledge_s_1",
+  "tags": [
+   "ledge_s"
+  ]
+ },
+ "090": {
+  "auto": true,
+  "name": "solid_9",
+  "tags": [
+   "solid"
+  ]
+ },
+ "091": {
+  "auto": true,
+  "name": "ground_1",
+  "tags": [
+   "ground"
+  ]
+ },
+ "092": {
+  "auto": true,
+  "name": "solid_10",
+  "tags": [
+   "solid"
+  ]
+ },
+ "093": {
+  "auto": true,
+  "name": "ledge_w_4",
+  "tags": [
+   "ledge_w"
+  ]
+ },
+ "094": {
+  "auto": true,
+  "name": "ledge_e_4",
+  "tags": [
+   "ledge_e"
+  ]
+ },
+ "095": {
+  "auto": true,
+  "name": "ledge_w_5",
+  "tags": [
+   "ledge_w"
+  ]
+ },
+ "096": {
+  "auto": true,
+  "name": "ledge_e_5",
+  "tags": [
+   "ledge_e"
+  ]
+ },
+ "097": {
+  "auto": true,
+  "name": "ledge_s_2",
+  "tags": [
+   "ledge_s"
+  ]
+ },
+ "098": {
+  "auto": true,
+  "name": "solid_9",
+  "tags": [
+   "solid"
+  ]
+ },
+ "099": {
+  "auto": true,
+  "name": "solid_10",
+  "tags": [
+   "solid"
+  ]
+ },
+ "09A": {
+  "auto": true,
+  "name": "solid_11",
+  "tags": [
+   "solid"
+  ]
+ },
+ "09B": {
+  "auto": true,
+  "name": "ledge_w_6",
+  "tags": [
+   "ledge_w"
+  ]
+ },
+ "09C": {
+  "auto": true,
+  "name": "ledge_e_6",
+  "tags": [
+   "ledge_e"
+  ]
+ },
+ "09E": {
+  "auto": true,
+  "name": "solid_9",
+  "tags": [
+   "solid"
+  ]
+ },
+ "09F": {
+  "auto": true,
+  "name": "solid_10",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0A0": {
+  "auto": true,
+  "name": "solid_12",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0A1": {
+  "auto": true,
+  "name": "solid_11",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0A2": {
+  "auto": true,
+  "name": "solid_13",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0A3": {
+  "auto": true,
+  "name": "ledge_w_7",
+  "tags": [
+   "ledge_w"
+  ]
+ },
+ "0A4": {
+  "auto": true,
+  "name": "ledge_e_7",
+  "tags": [
+   "ledge_e"
+  ]
+ },
+ "0A5": {
+  "auto": true,
+  "name": "ledge_w_8",
+  "tags": [
+   "ledge_w"
+  ]
+ },
+ "0A6": {
+  "auto": true,
+  "name": "ledge_e_8",
+  "tags": [
+   "ledge_e"
+  ]
+ },
+ "0A8": {
+  "auto": true,
+  "name": "solid_14",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0A9": {
+  "auto": true,
+  "name": "door_3",
+  "tags": [
+   "door"
+  ]
+ },
+ "0AA": {
+  "auto": true,
+  "name": "solid_15",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0AB": {
+  "auto": true,
+  "name": "ledge_w_9",
+  "tags": [
+   "ledge_w"
+  ]
+ },
+ "0AC": {
+  "auto": true,
+  "name": "ledge_e_9",
+  "tags": [
+   "ledge_e"
+  ]
+ },
+ "0AF": {
+  "auto": true,
+  "name": "ground_2",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0B0": {
+  "auto": true,
+  "name": "ledge_s_3",
+  "tags": [
+   "ledge_s"
+  ]
+ },
+ "0B1": {
+  "auto": true,
+  "name": "ledge_s_4",
+  "tags": [
+   "ledge_s"
+  ]
+ },
+ "0B2": {
+  "auto": true,
+  "name": "solid_16",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0B3": {
+  "name": "path_11",
+  "tags": [
+   "path"
+  ]
+ },
+ "0B4": {
+  "auto": true,
+  "name": "solid_11",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0B5": {
+  "auto": true,
+  "name": "solid_12",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0B7": {
+  "auto": true,
+  "name": "solid_13",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0B8": {
+  "auto": true,
+  "name": "ledge_s_5",
+  "tags": [
+   "ledge_s"
+  ]
+ },
+ "0B9": {
+  "auto": true,
+  "name": "ledge_s_6",
+  "tags": [
+   "ledge_s"
+  ]
+ },
+ "0BA": {
+  "auto": true,
+  "name": "solid_17",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0BB": {
+  "auto": true,
+  "name": "solid_18",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0BD": {
+  "auto": true,
+  "name": "ground_9",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0BE": {
+  "auto": true,
+  "name": "ground_10",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0BF": {
+  "auto": true,
+  "name": "ground_11",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0C0": {
+  "auto": true,
+  "name": "ledge_s_7",
+  "tags": [
+   "ledge_s"
+  ]
+ },
+ "0C1": {
+  "auto": true,
+  "name": "ledge_s_8",
+  "tags": [
+   "ledge_s"
+  ]
+ },
+ "0C2": {
+  "auto": true,
+  "name": "ground_3",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0C3": {
+  "auto": true,
+  "name": "ground_12",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0C4": {
+  "auto": true,
+  "name": "ground_13",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0C5": {
+  "auto": true,
+  "name": "ground_14",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0C6": {
+  "auto": true,
+  "name": "ground_15",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0C7": {
+  "auto": true,
+  "name": "ground_16",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0C8": {
+  "auto": true,
+  "name": "ledge_s_9",
+  "tags": [
+   "ledge_s"
+  ]
+ },
+ "0C9": {
+  "auto": true,
+  "name": "ledge_s_10",
+  "tags": [
+   "ledge_s"
+  ]
+ },
+ "0CA": {
+  "auto": true,
+  "name": "ground_1",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0CB": {
+  "auto": true,
+  "name": "ground_17",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0CC": {
+  "auto": true,
+  "name": "ground_18",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0CD": {
+  "auto": true,
+  "name": "ground_19",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0CE": {
+  "auto": true,
+  "name": "ground_20",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0CF": {
+  "auto": true,
+  "name": "ground_21",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0D0": {
+  "auto": true,
+  "name": "ground_1",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0D1": {
+  "auto": true,
+  "name": "ground_4",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0D2": {
+  "auto": true,
+  "name": "ground_5",
+  "tags": [
+   "ground"
   ]
  },
  "0D3": {
@@ -53,6 +1359,40 @@
    "path"
   ]
  },
+ "0D6": {
+  "auto": true,
+  "name": "solid_14",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0D7": {
+  "auto": true,
+  "name": "solid_15",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0D8": {
+  "auto": true,
+  "name": "ground_2",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0D9": {
+  "name": "path_2",
+  "tags": [
+   "path"
+  ]
+ },
+ "0DA": {
+  "auto": true,
+  "name": "ground_3",
+  "tags": [
+   "ground"
+  ]
+ },
  "0DB": {
   "name": "path_d",
   "tags": [
@@ -71,6 +1411,41 @@
    "path"
   ]
  },
+ "0DE": {
+  "auto": true,
+  "name": "solid_2",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0DF": {
+  "auto": true,
+  "name": "solid_16",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0E0": {
+  "auto": true,
+  "name": "ground_6",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0E1": {
+  "auto": true,
+  "name": "ground_7",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0E2": {
+  "auto": true,
+  "name": "ground_8",
+  "tags": [
+   "ground"
+  ]
+ },
  "0E3": {
   "name": "path_g",
   "tags": [
@@ -87,6 +1462,198 @@
   "name": "path_i",
   "tags": [
    "path"
+  ]
+ },
+ "0E6": {
+  "name": "grass_16",
+  "tags": [
+   "grass"
+  ]
+ },
+ "0E7": {
+  "name": "grass_8",
+  "tags": [
+   "grass"
+  ]
+ },
+ "0E8": {
+  "auto": true,
+  "name": "solid_47",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0E9": {
+  "auto": true,
+  "name": "solid_48",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0EA": {
+  "auto": true,
+  "name": "solid_12",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0EB": {
+  "auto": true,
+  "name": "solid_1",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0EC": {
+  "auto": true,
+  "name": "solid_19",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0ED": {
+  "auto": true,
+  "name": "solid_20",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0EE": {
+  "auto": true,
+  "name": "solid_13",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0EF": {
+  "auto": true,
+  "name": "solid_17",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0F0": {
+  "auto": true,
+  "name": "solid_49",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0F1": {
+  "auto": true,
+  "name": "solid_14",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0F2": {
+  "auto": true,
+  "name": "solid_50",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0F3": {
+  "auto": true,
+  "name": "solid_51",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0F4": {
+  "name": "grass_14",
+  "tags": [
+   "grass"
+  ]
+ },
+ "0F5": {
+  "name": "grass_15",
+  "tags": [
+   "grass"
+  ]
+ },
+ "0F6": {
+  "auto": true,
+  "name": "solid_18",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0F7": {
+  "auto": true,
+  "name": "solid_19",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0F8": {
+  "auto": true,
+  "name": "solid_15",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0F9": {
+  "auto": true,
+  "name": "solid_16",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0FA": {
+  "auto": true,
+  "name": "solid_20",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0FB": {
+  "auto": true,
+  "name": "solid_21",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0FC": {
+  "auto": true,
+  "name": "solid_21",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0FD": {
+  "auto": true,
+  "name": "solid_22",
+  "tags": [
+   "solid"
+  ]
+ },
+ "0FE": {
+  "auto": true,
+  "name": "ground_4",
+  "tags": [
+   "ground"
+  ]
+ },
+ "0FF": {
+  "auto": true,
+  "name": "ground_9",
+  "tags": [
+   "ground"
+  ]
+ },
+ "100": {
+  "auto": true,
+  "name": "water_1",
+  "tags": [
+   "water"
+  ]
+ },
+ "101": {
+  "auto": true,
+  "name": "water_2",
+  "tags": [
+   "water"
   ]
  },
  "102": {
@@ -111,6 +1678,2363 @@
   "name": "path_m",
   "tags": [
    "path"
+  ]
+ },
+ "106": {
+  "auto": true,
+  "name": "ground_10",
+  "tags": [
+   "ground"
+  ]
+ },
+ "107": {
+  "auto": true,
+  "name": "ground_11",
+  "tags": [
+   "ground"
+  ]
+ },
+ "108": {
+  "auto": true,
+  "name": "water_3",
+  "tags": [
+   "water"
+  ]
+ },
+ "109": {
+  "auto": true,
+  "name": "water_4",
+  "tags": [
+   "water"
+  ]
+ },
+ "10A": {
+  "auto": true,
+  "name": "water_5",
+  "tags": [
+   "water"
+  ]
+ },
+ "10B": {
+  "auto": true,
+  "name": "water_6",
+  "tags": [
+   "water"
+  ]
+ },
+ "10C": {
+  "auto": true,
+  "name": "water_7",
+  "tags": [
+   "water"
+  ]
+ },
+ "10D": {
+  "auto": true,
+  "name": "sand_1",
+  "tags": [
+   "sand"
+  ]
+ },
+ "10E": {
+  "auto": true,
+  "name": "water_8",
+  "tags": [
+   "water"
+  ]
+ },
+ "10F": {
+  "auto": true,
+  "name": "solid_3",
+  "tags": [
+   "solid"
+  ]
+ },
+ "110": {
+  "name": "water_7",
+  "tags": [
+   "water"
+  ]
+ },
+ "111": {
+  "name": "water_6",
+  "tags": [
+   "water"
+  ]
+ },
+ "112": {
+  "auto": true,
+  "name": "water_9",
+  "tags": [
+   "water"
+  ]
+ },
+ "113": {
+  "auto": true,
+  "name": "water_10",
+  "tags": [
+   "water"
+  ]
+ },
+ "114": {
+  "auto": true,
+  "name": "water_11",
+  "tags": [
+   "water"
+  ]
+ },
+ "115": {
+  "name": "sand_1",
+  "tags": [
+   "sand"
+  ]
+ },
+ "116": {
+  "auto": true,
+  "name": "water_12",
+  "tags": [
+   "water"
+  ]
+ },
+ "117": {
+  "auto": true,
+  "name": "solid_1",
+  "tags": [
+   "solid"
+  ]
+ },
+ "118": {
+  "name": "water_5",
+  "tags": [
+   "water"
+  ]
+ },
+ "119": {
+  "name": "water_4",
+  "tags": [
+   "water"
+  ]
+ },
+ "11A": {
+  "auto": true,
+  "name": "water_13",
+  "tags": [
+   "water"
+  ]
+ },
+ "11B": {
+  "auto": true,
+  "name": "water_14",
+  "tags": [
+   "water"
+  ]
+ },
+ "11C": {
+  "auto": true,
+  "name": "water_15",
+  "tags": [
+   "water"
+  ]
+ },
+ "11D": {
+  "auto": true,
+  "name": "water_16",
+  "tags": [
+   "water"
+  ]
+ },
+ "11E": {
+  "auto": true,
+  "name": "water_17",
+  "tags": [
+   "water"
+  ]
+ },
+ "11F": {
+  "auto": true,
+  "name": "solid_4",
+  "tags": [
+   "solid"
+  ]
+ },
+ "120": {
+  "auto": true,
+  "name": "water_18",
+  "tags": [
+   "water"
+  ]
+ },
+ "121": {
+  "auto": true,
+  "name": "water_19",
+  "tags": [
+   "water"
+  ]
+ },
+ "122": {
+  "auto": true,
+  "name": "water_20",
+  "tags": [
+   "water"
+  ]
+ },
+ "123": {
+  "name": "water_9",
+  "tags": [
+   "water"
+  ]
+ },
+ "124": {
+  "auto": true,
+  "name": "water_21",
+  "tags": [
+   "water"
+  ]
+ },
+ "125": {
+  "auto": true,
+  "name": "sand_2",
+  "tags": [
+   "sand"
+  ]
+ },
+ "126": {
+  "auto": true,
+  "name": "sand_3",
+  "tags": [
+   "sand"
+  ]
+ },
+ "127": {
+  "auto": true,
+  "name": "waterfall_1",
+  "tags": [
+   "waterfall"
+  ]
+ },
+ "128": {
+  "auto": true,
+  "name": "water_22",
+  "tags": [
+   "water"
+  ]
+ },
+ "129": {
+  "auto": true,
+  "name": "water_23",
+  "tags": [
+   "water"
+  ]
+ },
+ "12A": {
+  "name": "water_8",
+  "tags": [
+   "water"
+  ]
+ },
+ "12B": {
+  "name": "water_1",
+  "tags": [
+   "water"
+  ]
+ },
+ "12C": {
+  "name": "water_14",
+  "tags": [
+   "water"
+  ]
+ },
+ "12D": {
+  "auto": true,
+  "name": "water_24",
+  "tags": [
+   "water"
+  ]
+ },
+ "12E": {
+  "auto": true,
+  "name": "water_25",
+  "tags": [
+   "water"
+  ]
+ },
+ "12F": {
+  "auto": true,
+  "name": "waterfall_2",
+  "tags": [
+   "waterfall"
+  ]
+ },
+ "130": {
+  "auto": true,
+  "name": "water_26",
+  "tags": [
+   "water"
+  ]
+ },
+ "131": {
+  "auto": true,
+  "name": "water_27",
+  "tags": [
+   "water"
+  ]
+ },
+ "132": {
+  "auto": true,
+  "name": "ground_1",
+  "tags": [
+   "ground"
+  ]
+ },
+ "133": {
+  "auto": true,
+  "name": "ground_2",
+  "tags": [
+   "ground"
+  ]
+ },
+ "134": {
+  "auto": true,
+  "name": "ground_3",
+  "tags": [
+   "ground"
+  ]
+ },
+ "135": {
+  "auto": true,
+  "name": "solid_22",
+  "tags": [
+   "solid"
+  ]
+ },
+ "136": {
+  "auto": true,
+  "name": "solid_23",
+  "tags": [
+   "solid"
+  ]
+ },
+ "137": {
+  "auto": true,
+  "name": "waterfall_3",
+  "tags": [
+   "waterfall"
+  ]
+ },
+ "138": {
+  "auto": true,
+  "name": "ground_1",
+  "tags": [
+   "ground"
+  ]
+ },
+ "139": {
+  "auto": true,
+  "name": "ground_12",
+  "tags": [
+   "ground"
+  ]
+ },
+ "13A": {
+  "auto": true,
+  "name": "ground_13",
+  "tags": [
+   "ground"
+  ]
+ },
+ "13B": {
+  "auto": true,
+  "name": "ground_14",
+  "tags": [
+   "ground"
+  ]
+ },
+ "13C": {
+  "auto": true,
+  "name": "ground_2",
+  "tags": [
+   "ground"
+  ]
+ },
+ "13D": {
+  "auto": true,
+  "name": "solid_24",
+  "tags": [
+   "solid"
+  ]
+ },
+ "13E": {
+  "auto": true,
+  "name": "solid_25",
+  "tags": [
+   "solid"
+  ]
+ },
+ "13F": {
+  "auto": true,
+  "name": "solid_26",
+  "tags": [
+   "solid"
+  ]
+ },
+ "140": {
+  "auto": true,
+  "name": "door_4",
+  "tags": [
+   "door"
+  ]
+ },
+ "141": {
+  "auto": true,
+  "name": "solid_52",
+  "tags": [
+   "solid"
+  ]
+ },
+ "142": {
+  "auto": true,
+  "name": "solid_53",
+  "tags": [
+   "solid"
+  ]
+ },
+ "143": {
+  "auto": true,
+  "name": "solid_54",
+  "tags": [
+   "solid"
+  ]
+ },
+ "144": {
+  "auto": true,
+  "name": "door_5",
+  "tags": [
+   "door"
+  ]
+ },
+ "146": {
+  "auto": true,
+  "name": "solid_27",
+  "tags": [
+   "solid"
+  ]
+ },
+ "148": {
+  "auto": true,
+  "name": "ground_3",
+  "tags": [
+   "ground"
+  ]
+ },
+ "149": {
+  "auto": true,
+  "name": "solid_55",
+  "tags": [
+   "solid"
+  ]
+ },
+ "14A": {
+  "auto": true,
+  "name": "solid_56",
+  "tags": [
+   "solid"
+  ]
+ },
+ "14B": {
+  "auto": true,
+  "name": "solid_57",
+  "tags": [
+   "solid"
+  ]
+ },
+ "14C": {
+  "auto": true,
+  "name": "ground_4",
+  "tags": [
+   "ground"
+  ]
+ },
+ "14D": {
+  "auto": true,
+  "name": "solid_28",
+  "tags": [
+   "solid"
+  ]
+ },
+ "150": {
+  "auto": true,
+  "name": "solid_58",
+  "tags": [
+   "solid"
+  ]
+ },
+ "151": {
+  "auto": true,
+  "name": "solid_59",
+  "tags": [
+   "solid"
+  ]
+ },
+ "152": {
+  "auto": true,
+  "name": "solid_60",
+  "tags": [
+   "solid"
+  ]
+ },
+ "153": {
+  "auto": true,
+  "name": "solid_61",
+  "tags": [
+   "solid"
+  ]
+ },
+ "154": {
+  "auto": true,
+  "name": "solid_62",
+  "tags": [
+   "solid"
+  ]
+ },
+ "155": {
+  "auto": true,
+  "name": "solid_17",
+  "tags": [
+   "solid"
+  ]
+ },
+ "156": {
+  "auto": true,
+  "name": "solid_63",
+  "tags": [
+   "solid"
+  ]
+ },
+ "157": {
+  "auto": true,
+  "name": "solid_29",
+  "tags": [
+   "solid"
+  ]
+ },
+ "158": {
+  "auto": true,
+  "name": "ground_22",
+  "tags": [
+   "ground"
+  ]
+ },
+ "159": {
+  "auto": true,
+  "name": "ground_23",
+  "tags": [
+   "ground"
+  ]
+ },
+ "15A": {
+  "auto": true,
+  "name": "solid_64",
+  "tags": [
+   "solid"
+  ]
+ },
+ "15B": {
+  "auto": true,
+  "name": "door_6",
+  "tags": [
+   "door"
+  ]
+ },
+ "15C": {
+  "auto": true,
+  "name": "solid_65",
+  "tags": [
+   "solid"
+  ]
+ },
+ "15D": {
+  "auto": true,
+  "name": "ground_15",
+  "tags": [
+   "ground"
+  ]
+ },
+ "15E": {
+  "auto": true,
+  "name": "ground_24",
+  "tags": [
+   "ground"
+  ]
+ },
+ "160": {
+  "auto": true,
+  "name": "ground_25",
+  "tags": [
+   "ground"
+  ]
+ },
+ "161": {
+  "auto": true,
+  "name": "ground_2",
+  "tags": [
+   "ground"
+  ]
+ },
+ "162": {
+  "auto": true,
+  "name": "ground_26",
+  "tags": [
+   "ground"
+  ]
+ },
+ "163": {
+  "auto": true,
+  "name": "ground_27",
+  "tags": [
+   "ground"
+  ]
+ },
+ "164": {
+  "auto": true,
+  "name": "ground_28",
+  "tags": [
+   "ground"
+  ]
+ },
+ "165": {
+  "auto": true,
+  "name": "ground_29",
+  "tags": [
+   "ground"
+  ]
+ },
+ "166": {
+  "auto": true,
+  "name": "ground_30",
+  "tags": [
+   "ground"
+  ]
+ },
+ "167": {
+  "auto": true,
+  "name": "ground_31",
+  "tags": [
+   "ground"
+  ]
+ },
+ "168": {
+  "auto": true,
+  "name": "solid_66",
+  "tags": [
+   "solid"
+  ]
+ },
+ "169": {
+  "auto": true,
+  "name": "solid_30",
+  "tags": [
+   "solid"
+  ]
+ },
+ "16A": {
+  "auto": true,
+  "name": "ground_32",
+  "tags": [
+   "ground"
+  ]
+ },
+ "16B": {
+  "auto": true,
+  "name": "ground_33",
+  "tags": [
+   "ground"
+  ]
+ },
+ "16C": {
+  "auto": true,
+  "name": "ground_34",
+  "tags": [
+   "ground"
+  ]
+ },
+ "16D": {
+  "auto": true,
+  "name": "ground_35",
+  "tags": [
+   "ground"
+  ]
+ },
+ "16E": {
+  "auto": true,
+  "name": "ground_36",
+  "tags": [
+   "ground"
+  ]
+ },
+ "16F": {
+  "auto": true,
+  "name": "ground_37",
+  "tags": [
+   "ground"
+  ]
+ },
+ "170": {
+  "auto": true,
+  "name": "solid_67",
+  "tags": [
+   "solid"
+  ]
+ },
+ "171": {
+  "auto": true,
+  "name": "solid_68",
+  "tags": [
+   "solid"
+  ]
+ },
+ "172": {
+  "auto": true,
+  "name": "ground_38",
+  "tags": [
+   "ground"
+  ]
+ },
+ "173": {
+  "auto": true,
+  "name": "ground_39",
+  "tags": [
+   "ground"
+  ]
+ },
+ "174": {
+  "auto": true,
+  "name": "ground_40",
+  "tags": [
+   "ground"
+  ]
+ },
+ "175": {
+  "auto": true,
+  "name": "ground_41",
+  "tags": [
+   "ground"
+  ]
+ },
+ "176": {
+  "auto": true,
+  "name": "ground_42",
+  "tags": [
+   "ground"
+  ]
+ },
+ "177": {
+  "auto": true,
+  "name": "ground_43",
+  "tags": [
+   "ground"
+  ]
+ },
+ "178": {
+  "auto": true,
+  "name": "ground_44",
+  "tags": [
+   "ground"
+  ]
+ },
+ "179": {
+  "auto": true,
+  "name": "door_7",
+  "tags": [
+   "door"
+  ]
+ },
+ "17A": {
+  "auto": true,
+  "name": "ground_45",
+  "tags": [
+   "ground"
+  ]
+ },
+ "17B": {
+  "auto": true,
+  "name": "ground_16",
+  "tags": [
+   "ground"
+  ]
+ },
+ "17C": {
+  "auto": true,
+  "name": "ground_17",
+  "tags": [
+   "ground"
+  ]
+ },
+ "17D": {
+  "auto": true,
+  "name": "ground_18",
+  "tags": [
+   "ground"
+  ]
+ },
+ "17E": {
+  "auto": true,
+  "name": "ground_19",
+  "tags": [
+   "ground"
+  ]
+ },
+ "17F": {
+  "auto": true,
+  "name": "ground_20",
+  "tags": [
+   "ground"
+  ]
+ },
+ "180": {
+  "auto": true,
+  "name": "ground_21",
+  "tags": [
+   "ground"
+  ]
+ },
+ "181": {
+  "auto": true,
+  "name": "ground_22",
+  "tags": [
+   "ground"
+  ]
+ },
+ "183": {
+  "auto": true,
+  "name": "solid_69",
+  "tags": [
+   "solid"
+  ]
+ },
+ "184": {
+  "auto": true,
+  "name": "solid_70",
+  "tags": [
+   "solid"
+  ]
+ },
+ "185": {
+  "auto": true,
+  "name": "solid_71",
+  "tags": [
+   "solid"
+  ]
+ },
+ "186": {
+  "auto": true,
+  "name": "solid_72",
+  "tags": [
+   "solid"
+  ]
+ },
+ "187": {
+  "auto": true,
+  "name": "solid_73",
+  "tags": [
+   "solid"
+  ]
+ },
+ "188": {
+  "auto": true,
+  "name": "solid_74",
+  "tags": [
+   "solid"
+  ]
+ },
+ "189": {
+  "auto": true,
+  "name": "solid_75",
+  "tags": [
+   "solid"
+  ]
+ },
+ "18A": {
+  "auto": true,
+  "name": "solid_76",
+  "tags": [
+   "solid"
+  ]
+ },
+ "18D": {
+  "auto": true,
+  "name": "ground_5",
+  "tags": [
+   "ground"
+  ]
+ },
+ "18E": {
+  "auto": true,
+  "name": "ground_1",
+  "tags": [
+   "ground"
+  ]
+ },
+ "18F": {
+  "auto": true,
+  "name": "solid_77",
+  "tags": [
+   "solid"
+  ]
+ },
+ "190": {
+  "auto": true,
+  "name": "solid_78",
+  "tags": [
+   "solid"
+  ]
+ },
+ "191": {
+  "auto": true,
+  "name": "door_8",
+  "tags": [
+   "door"
+  ]
+ },
+ "192": {
+  "auto": true,
+  "name": "solid_79",
+  "tags": [
+   "solid"
+  ]
+ },
+ "195": {
+  "auto": true,
+  "name": "ground_46",
+  "tags": [
+   "ground"
+  ]
+ },
+ "196": {
+  "auto": true,
+  "name": "ground_47",
+  "tags": [
+   "ground"
+  ]
+ },
+ "197": {
+  "auto": true,
+  "name": "solid_80",
+  "tags": [
+   "solid"
+  ]
+ },
+ "198": {
+  "auto": true,
+  "name": "ground_48",
+  "tags": [
+   "ground"
+  ]
+ },
+ "199": {
+  "auto": true,
+  "name": "ground_49",
+  "tags": [
+   "ground"
+  ]
+ },
+ "19A": {
+  "auto": true,
+  "name": "ground_50",
+  "tags": [
+   "ground"
+  ]
+ },
+ "19D": {
+  "auto": true,
+  "name": "ground_51",
+  "tags": [
+   "ground"
+  ]
+ },
+ "19E": {
+  "auto": true,
+  "name": "ground_52",
+  "tags": [
+   "ground"
+  ]
+ },
+ "19F": {
+  "auto": true,
+  "name": "solid_81",
+  "tags": [
+   "solid"
+  ]
+ },
+ "1A0": {
+  "auto": true,
+  "name": "water_28",
+  "tags": [
+   "water"
+  ]
+ },
+ "1A1": {
+  "auto": true,
+  "name": "water_29",
+  "tags": [
+   "water"
+  ]
+ },
+ "1A2": {
+  "auto": true,
+  "name": "water_30",
+  "tags": [
+   "water"
+  ]
+ },
+ "1A3": {
+  "auto": true,
+  "name": "water_31",
+  "tags": [
+   "water"
+  ]
+ },
+ "1A4": {
+  "auto": true,
+  "name": "water_32",
+  "tags": [
+   "water"
+  ]
+ },
+ "1A5": {
+  "auto": true,
+  "name": "water_33",
+  "tags": [
+   "water"
+  ]
+ },
+ "1A6": {
+  "auto": true,
+  "name": "water_34",
+  "tags": [
+   "water"
+  ]
+ },
+ "1A7": {
+  "auto": true,
+  "name": "water_35",
+  "tags": [
+   "water"
+  ]
+ },
+ "1A8": {
+  "auto": true,
+  "name": "water_36",
+  "tags": [
+   "water"
+  ]
+ },
+ "1A9": {
+  "auto": true,
+  "name": "water_37",
+  "tags": [
+   "water"
+  ]
+ },
+ "1AA": {
+  "auto": true,
+  "name": "water_38",
+  "tags": [
+   "water"
+  ]
+ },
+ "1AB": {
+  "auto": true,
+  "name": "water_39",
+  "tags": [
+   "water"
+  ]
+ },
+ "1AC": {
+  "auto": true,
+  "name": "water_40",
+  "tags": [
+   "water"
+  ]
+ },
+ "1AD": {
+  "auto": true,
+  "name": "water_41",
+  "tags": [
+   "water"
+  ]
+ },
+ "1AE": {
+  "auto": true,
+  "name": "water_42",
+  "tags": [
+   "water"
+  ]
+ },
+ "1AF": {
+  "auto": true,
+  "name": "water_43",
+  "tags": [
+   "water"
+  ]
+ },
+ "1B0": {
+  "auto": true,
+  "name": "water_44",
+  "tags": [
+   "water"
+  ]
+ },
+ "1B1": {
+  "auto": true,
+  "name": "water_45",
+  "tags": [
+   "water"
+  ]
+ },
+ "1B2": {
+  "auto": true,
+  "name": "water_46",
+  "tags": [
+   "water"
+  ]
+ },
+ "1B3": {
+  "auto": true,
+  "name": "water_47",
+  "tags": [
+   "water"
+  ]
+ },
+ "1B4": {
+  "auto": true,
+  "name": "water_48",
+  "tags": [
+   "water"
+  ]
+ },
+ "1B5": {
+  "auto": true,
+  "name": "solid_82",
+  "tags": [
+   "solid"
+  ]
+ },
+ "1B6": {
+  "auto": true,
+  "name": "solid_83",
+  "tags": [
+   "solid"
+  ]
+ },
+ "1B7": {
+  "auto": true,
+  "name": "solid_84",
+  "tags": [
+   "solid"
+  ]
+ },
+ "1B8": {
+  "auto": true,
+  "name": "ground_23",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1B9": {
+  "auto": true,
+  "name": "ground_24",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1BA": {
+  "auto": true,
+  "name": "ground_25",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1BB": {
+  "auto": true,
+  "name": "ground_26",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1BC": {
+  "auto": true,
+  "name": "ground_27",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1BD": {
+  "auto": true,
+  "name": "ground_6",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1BE": {
+  "auto": true,
+  "name": "ground_7",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1BF": {
+  "auto": true,
+  "name": "ground_1",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1C0": {
+  "auto": true,
+  "name": "ground_28",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1C1": {
+  "auto": true,
+  "name": "ground_29",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1C2": {
+  "auto": true,
+  "name": "ground_30",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1C3": {
+  "auto": true,
+  "name": "ground_31",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1C4": {
+  "auto": true,
+  "name": "ground_32",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1C5": {
+  "auto": true,
+  "name": "ground_8",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1C6": {
+  "auto": true,
+  "name": "ground_9",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1C7": {
+  "auto": true,
+  "name": "ground_10",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1C8": {
+  "auto": true,
+  "name": "ground_33",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1C9": {
+  "auto": true,
+  "name": "ground_34",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1CA": {
+  "auto": true,
+  "name": "ground_35",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1CB": {
+  "name": "water_10",
+  "tags": [
+   "water"
+  ]
+ },
+ "1CC": {
+  "name": "water_11",
+  "tags": [
+   "water"
+  ]
+ },
+ "1CD": {
+  "auto": true,
+  "name": "water_49",
+  "tags": [
+   "water"
+  ]
+ },
+ "1CE": {
+  "auto": true,
+  "name": "water_50",
+  "tags": [
+   "water"
+  ]
+ },
+ "1CF": {
+  "auto": true,
+  "name": "water_51",
+  "tags": [
+   "water"
+  ]
+ },
+ "1D0": {
+  "auto": true,
+  "name": "water_52",
+  "tags": [
+   "water"
+  ]
+ },
+ "1D1": {
+  "auto": true,
+  "name": "water_53",
+  "tags": [
+   "water"
+  ]
+ },
+ "1D2": {
+  "auto": true,
+  "name": "water_54",
+  "tags": [
+   "water"
+  ]
+ },
+ "1D3": {
+  "name": "water_12",
+  "tags": [
+   "water"
+  ]
+ },
+ "1D4": {
+  "name": "water_13",
+  "tags": [
+   "water"
+  ]
+ },
+ "1D5": {
+  "auto": true,
+  "name": "sand_4",
+  "tags": [
+   "sand"
+  ]
+ },
+ "1D6": {
+  "auto": true,
+  "name": "sand_5",
+  "tags": [
+   "sand"
+  ]
+ },
+ "1D7": {
+  "auto": true,
+  "name": "sand_6",
+  "tags": [
+   "sand"
+  ]
+ },
+ "1D8": {
+  "auto": true,
+  "name": "water_55",
+  "tags": [
+   "water"
+  ]
+ },
+ "1D9": {
+  "name": "water_2",
+  "tags": [
+   "water"
+  ]
+ },
+ "1DA": {
+  "auto": true,
+  "name": "water_56",
+  "tags": [
+   "water"
+  ]
+ },
+ "1DB": {
+  "auto": true,
+  "name": "water_57",
+  "tags": [
+   "water"
+  ]
+ },
+ "1DC": {
+  "auto": true,
+  "name": "water_58",
+  "tags": [
+   "water"
+  ]
+ },
+ "1DD": {
+  "auto": true,
+  "name": "sand_7",
+  "tags": [
+   "sand"
+  ]
+ },
+ "1DE": {
+  "auto": true,
+  "name": "water_59",
+  "tags": [
+   "water"
+  ]
+ },
+ "1DF": {
+  "auto": true,
+  "name": "sand_8",
+  "tags": [
+   "sand"
+  ]
+ },
+ "1E0": {
+  "auto": true,
+  "name": "water_60",
+  "tags": [
+   "water"
+  ]
+ },
+ "1E1": {
+  "auto": true,
+  "name": "water_61",
+  "tags": [
+   "water"
+  ]
+ },
+ "1E2": {
+  "auto": true,
+  "name": "water_62",
+  "tags": [
+   "water"
+  ]
+ },
+ "1E3": {
+  "auto": true,
+  "name": "water_63",
+  "tags": [
+   "water"
+  ]
+ },
+ "1E4": {
+  "auto": true,
+  "name": "water_64",
+  "tags": [
+   "water"
+  ]
+ },
+ "1E5": {
+  "auto": true,
+  "name": "ground_11",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1E6": {
+  "auto": true,
+  "name": "ground_12",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1E7": {
+  "auto": true,
+  "name": "ground_13",
+  "tags": [
+   "ground"
+  ]
+ },
+ "1E8": {
+  "auto": true,
+  "name": "sand_9",
+  "tags": [
+   "sand"
+  ]
+ },
+ "1E9": {
+  "auto": true,
+  "name": "sand_10",
+  "tags": [
+   "sand"
+  ]
+ },
+ "1EA": {
+  "auto": true,
+  "name": "sand_11",
+  "tags": [
+   "sand"
+  ]
+ },
+ "1EB": {
+  "auto": true,
+  "name": "sand_12",
+  "tags": [
+   "sand"
+  ]
+ },
+ "1EC": {
+  "auto": true,
+  "name": "water_65",
+  "tags": [
+   "water"
+  ]
+ },
+ "1ED": {
+  "auto": true,
+  "name": "water_66",
+  "tags": [
+   "water"
+  ]
+ },
+ "1EE": {
+  "auto": true,
+  "name": "water_67",
+  "tags": [
+   "water"
+  ]
+ },
+ "1EF": {
+  "auto": true,
+  "name": "water_68",
+  "tags": [
+   "water"
+  ]
+ },
+ "1F0": {
+  "auto": true,
+  "name": "solid_2",
+  "tags": [
+   "solid"
+  ]
+ },
+ "1F1": {
+  "auto": true,
+  "name": "solid_18",
+  "tags": [
+   "solid"
+  ]
+ },
+ "1F2": {
+  "auto": true,
+  "name": "solid_85",
+  "tags": [
+   "solid"
+  ]
+ },
+ "1F3": {
+  "auto": true,
+  "name": "solid_31",
+  "tags": [
+   "solid"
+  ]
+ },
+ "1F4": {
+  "auto": true,
+  "name": "solid_32",
+  "tags": [
+   "solid"
+  ]
+ },
+ "1F5": {
+  "auto": true,
+  "name": "solid_1",
+  "tags": [
+   "solid"
+  ]
+ },
+ "1F6": {
+  "auto": true,
+  "name": "solid_2",
+  "tags": [
+   "solid"
+  ]
+ },
+ "1F7": {
+  "auto": true,
+  "name": "door_9",
+  "tags": [
+   "door"
+  ]
+ },
+ "1F8": {
+  "auto": true,
+  "name": "water_69",
+  "tags": [
+   "water"
+  ]
+ },
+ "1F9": {
+  "auto": true,
+  "name": "water_70",
+  "tags": [
+   "water"
+  ]
+ },
+ "1FA": {
+  "auto": true,
+  "name": "water_71",
+  "tags": [
+   "water"
+  ]
+ },
+ "1FB": {
+  "auto": true,
+  "name": "water_72",
+  "tags": [
+   "water"
+  ]
+ },
+ "1FC": {
+  "auto": true,
+  "name": "water_73",
+  "tags": [
+   "water"
+  ]
+ },
+ "1FD": {
+  "auto": true,
+  "name": "water_74",
+  "tags": [
+   "water"
+  ]
+ },
+ "1FE": {
+  "auto": true,
+  "name": "water_75",
+  "tags": [
+   "water"
+  ]
+ },
+ "1FF": {
+  "auto": true,
+  "name": "door_10",
+  "tags": [
+   "door"
+  ]
+ },
+ "200": {
+  "auto": true,
+  "name": "water_76",
+  "tags": [
+   "water"
+  ]
+ },
+ "201": {
+  "auto": true,
+  "name": "water_77",
+  "tags": [
+   "water"
+  ]
+ },
+ "202": {
+  "auto": true,
+  "name": "water_78",
+  "tags": [
+   "water"
+  ]
+ },
+ "203": {
+  "auto": true,
+  "name": "water_79",
+  "tags": [
+   "water"
+  ]
+ },
+ "204": {
+  "auto": true,
+  "name": "water_80",
+  "tags": [
+   "water"
+  ]
+ },
+ "205": {
+  "auto": true,
+  "name": "sand_13",
+  "tags": [
+   "sand"
+  ]
+ },
+ "206": {
+  "auto": true,
+  "name": "sand_14",
+  "tags": [
+   "sand"
+  ]
+ },
+ "207": {
+  "auto": true,
+  "name": "solid_19",
+  "tags": [
+   "solid"
+  ]
+ },
+ "208": {
+  "auto": true,
+  "name": "water_81",
+  "tags": [
+   "water"
+  ]
+ },
+ "209": {
+  "auto": true,
+  "name": "water_82",
+  "tags": [
+   "water"
+  ]
+ },
+ "20A": {
+  "auto": true,
+  "name": "water_83",
+  "tags": [
+   "water"
+  ]
+ },
+ "20C": {
+  "auto": true,
+  "name": "water_84",
+  "tags": [
+   "water"
+  ]
+ },
+ "20D": {
+  "auto": true,
+  "name": "water_85",
+  "tags": [
+   "water"
+  ]
+ },
+ "20E": {
+  "auto": true,
+  "name": "water_86",
+  "tags": [
+   "water"
+  ]
+ },
+ "20F": {
+  "auto": true,
+  "name": "solid_20",
+  "tags": [
+   "solid"
+  ]
+ },
+ "210": {
+  "auto": true,
+  "name": "sand_15",
+  "tags": [
+   "sand"
+  ]
+ },
+ "211": {
+  "auto": true,
+  "name": "sand_16",
+  "tags": [
+   "sand"
+  ]
+ },
+ "212": {
+  "auto": true,
+  "name": "water_87",
+  "tags": [
+   "water"
+  ]
+ },
+ "213": {
+  "auto": true,
+  "name": "water_88",
+  "tags": [
+   "water"
+  ]
+ },
+ "214": {
+  "auto": true,
+  "name": "water_89",
+  "tags": [
+   "water"
+  ]
+ },
+ "215": {
+  "auto": true,
+  "name": "water_90",
+  "tags": [
+   "water"
+  ]
+ },
+ "216": {
+  "auto": true,
+  "name": "water_91",
+  "tags": [
+   "water"
+  ]
+ },
+ "217": {
+  "auto": true,
+  "name": "solid_33",
+  "tags": [
+   "solid"
+  ]
+ },
+ "218": {
+  "auto": true,
+  "name": "water_92",
+  "tags": [
+   "water"
+  ]
+ },
+ "219": {
+  "auto": true,
+  "name": "water_93",
+  "tags": [
+   "water"
+  ]
+ },
+ "21A": {
+  "auto": true,
+  "name": "water_94",
+  "tags": [
+   "water"
+  ]
+ },
+ "21B": {
+  "auto": true,
+  "name": "water_95",
+  "tags": [
+   "water"
+  ]
+ },
+ "21E": {
+  "auto": true,
+  "name": "solid_5",
+  "tags": [
+   "solid"
+  ]
+ },
+ "21F": {
+  "auto": true,
+  "name": "solid_6",
+  "tags": [
+   "solid"
+  ]
+ },
+ "220": {
+  "auto": true,
+  "name": "water_96",
+  "tags": [
+   "water"
+  ]
+ },
+ "221": {
+  "auto": true,
+  "name": "water_97",
+  "tags": [
+   "water"
+  ]
+ },
+ "222": {
+  "auto": true,
+  "name": "water_98",
+  "tags": [
+   "water"
+  ]
+ },
+ "223": {
+  "auto": true,
+  "name": "water_99",
+  "tags": [
+   "water"
+  ]
+ },
+ "224": {
+  "auto": true,
+  "name": "water_100",
+  "tags": [
+   "water"
+  ]
+ },
+ "225": {
+  "auto": true,
+  "name": "water_101",
+  "tags": [
+   "water"
+  ]
+ },
+ "226": {
+  "auto": true,
+  "name": "water_102",
+  "tags": [
+   "water"
+  ]
+ },
+ "227": {
+  "auto": true,
+  "name": "solid_3",
+  "tags": [
+   "solid"
+  ]
+ },
+ "240": {
+  "auto": true,
+  "name": "sand_17",
+  "tags": [
+   "sand"
+  ]
+ },
+ "241": {
+  "auto": true,
+  "name": "sand_18",
+  "tags": [
+   "sand"
+  ]
+ },
+ "242": {
+  "auto": true,
+  "name": "sand_19",
+  "tags": [
+   "sand"
+  ]
+ },
+ "243": {
+  "auto": true,
+  "name": "sand_20",
+  "tags": [
+   "sand"
+  ]
+ },
+ "244": {
+  "auto": true,
+  "name": "solid_3",
+  "tags": [
+   "solid"
+  ]
+ },
+ "245": {
+  "auto": true,
+  "name": "solid_4",
+  "tags": [
+   "solid"
+  ]
+ },
+ "246": {
+  "auto": true,
+  "name": "solid_5",
+  "tags": [
+   "solid"
+  ]
+ },
+ "247": {
+  "auto": true,
+  "name": "solid_6",
+  "tags": [
+   "solid"
+  ]
+ },
+ "248": {
+  "auto": true,
+  "name": "water_103",
+  "tags": [
+   "water"
+  ]
+ },
+ "249": {
+  "auto": true,
+  "name": "water_104",
+  "tags": [
+   "water"
+  ]
+ },
+ "24A": {
+  "auto": true,
+  "name": "water_105",
+  "tags": [
+   "water"
+  ]
+ },
+ "24B": {
+  "auto": true,
+  "name": "water_106",
+  "tags": [
+   "water"
+  ]
+ },
+ "24C": {
+  "auto": true,
+  "name": "solid_21",
+  "tags": [
+   "solid"
+  ]
+ },
+ "24D": {
+  "auto": true,
+  "name": "solid_22",
+  "tags": [
+   "solid"
+  ]
+ },
+ "24E": {
+  "auto": true,
+  "name": "solid_23",
+  "tags": [
+   "solid"
+  ]
+ },
+ "24F": {
+  "auto": true,
+  "name": "solid_24",
+  "tags": [
+   "solid"
+  ]
+ },
+ "250": {
+  "auto": true,
+  "name": "water_107",
+  "tags": [
+   "water"
+  ]
+ },
+ "251": {
+  "auto": true,
+  "name": "sand_21",
+  "tags": [
+   "sand"
+  ]
+ },
+ "252": {
+  "auto": true,
+  "name": "water_108",
+  "tags": [
+   "water"
+  ]
+ },
+ "253": {
+  "auto": true,
+  "name": "solid_25",
+  "tags": [
+   "solid"
+  ]
+ },
+ "254": {
+  "auto": true,
+  "name": "solid_26",
+  "tags": [
+   "solid"
+  ]
+ },
+ "255": {
+  "auto": true,
+  "name": "solid_27",
+  "tags": [
+   "solid"
+  ]
+ },
+ "256": {
+  "auto": true,
+  "name": "solid_28",
+  "tags": [
+   "solid"
+  ]
+ },
+ "257": {
+  "auto": true,
+  "name": "solid_29",
+  "tags": [
+   "solid"
+  ]
+ },
+ "258": {
+  "auto": true,
+  "name": "water_109",
+  "tags": [
+   "water"
+  ]
+ },
+ "259": {
+  "auto": true,
+  "name": "sand_22",
+  "tags": [
+   "sand"
+  ]
+ },
+ "25A": {
+  "auto": true,
+  "name": "water_110",
+  "tags": [
+   "water"
+  ]
+ },
+ "25B": {
+  "auto": true,
+  "name": "sand_23",
+  "tags": [
+   "sand"
+  ]
+ },
+ "25C": {
+  "auto": true,
+  "name": "sand_24",
+  "tags": [
+   "sand"
+  ]
+ },
+ "25D": {
+  "auto": true,
+  "name": "solid_30",
+  "tags": [
+   "solid"
+  ]
+ },
+ "25E": {
+  "auto": true,
+  "name": "solid_31",
+  "tags": [
+   "solid"
+  ]
+ },
+ "25F": {
+  "auto": true,
+  "name": "solid_32",
+  "tags": [
+   "solid"
+  ]
+ },
+ "260": {
+  "auto": true,
+  "name": "water_111",
+  "tags": [
+   "water"
+  ]
+ },
+ "261": {
+  "auto": true,
+  "name": "water_112",
+  "tags": [
+   "water"
+  ]
+ },
+ "262": {
+  "auto": true,
+  "name": "water_113",
+  "tags": [
+   "water"
+  ]
+ },
+ "263": {
+  "auto": true,
+  "name": "water_114",
+  "tags": [
+   "water"
+  ]
+ },
+ "264": {
+  "auto": true,
+  "name": "water_115",
+  "tags": [
+   "water"
+  ]
+ },
+ "265": {
+  "auto": true,
+  "name": "ground_36",
+  "tags": [
+   "ground"
+  ]
+ },
+ "266": {
+  "auto": true,
+  "name": "ground_37",
+  "tags": [
+   "ground"
+  ]
+ },
+ "267": {
+  "auto": true,
+  "name": "ground_38",
+  "tags": [
+   "ground"
+  ]
+ },
+ "268": {
+  "auto": true,
+  "name": "solid_33",
+  "tags": [
+   "solid"
+  ]
+ },
+ "269": {
+  "auto": true,
+  "name": "solid_34",
+  "tags": [
+   "solid"
+  ]
+ },
+ "26A": {
+  "auto": true,
+  "name": "solid_35",
+  "tags": [
+   "solid"
+  ]
+ },
+ "26B": {
+  "auto": true,
+  "name": "solid_36",
+  "tags": [
+   "solid"
+  ]
+ },
+ "26C": {
+  "auto": true,
+  "name": "ground_39",
+  "tags": [
+   "ground"
+  ]
+ },
+ "26D": {
+  "auto": true,
+  "name": "ground_40",
+  "tags": [
+   "ground"
+  ]
+ },
+ "26E": {
+  "auto": true,
+  "name": "ground_41",
+  "tags": [
+   "ground"
+  ]
+ },
+ "26F": {
+  "auto": true,
+  "name": "ground_42",
+  "tags": [
+   "ground"
+  ]
+ },
+ "270": {
+  "auto": true,
+  "name": "ground_43",
+  "tags": [
+   "ground"
+  ]
+ },
+ "271": {
+  "auto": true,
+  "name": "ground_44",
+  "tags": [
+   "ground"
+  ]
+ },
+ "272": {
+  "auto": true,
+  "name": "solid_37",
+  "tags": [
+   "solid"
+  ]
+ },
+ "273": {
+  "name": "water_15",
+  "tags": [
+   "water"
+  ]
+ },
+ "274": {
+  "auto": true,
+  "name": "ground_45",
+  "tags": [
+   "ground"
+  ]
+ },
+ "275": {
+  "auto": true,
+  "name": "ground_46",
+  "tags": [
+   "ground"
+  ]
+ },
+ "276": {
+  "name": "water_3",
+  "tags": [
+   "water"
+  ]
+ },
+ "277": {
+  "auto": true,
+  "name": "ground_47",
+  "tags": [
+   "ground"
+  ]
+ },
+ "278": {
+  "auto": true,
+  "name": "solid_38",
+  "tags": [
+   "solid"
+  ]
+ },
+ "279": {
+  "auto": true,
+  "name": "solid_39",
+  "tags": [
+   "solid"
+  ]
+ },
+ "27A": {
+  "auto": true,
+  "name": "solid_40",
+  "tags": [
+   "solid"
+  ]
+ },
+ "27B": {
+  "auto": true,
+  "name": "solid_41",
+  "tags": [
+   "solid"
+  ]
+ },
+ "27C": {
+  "auto": true,
+  "name": "ground_48",
+  "tags": [
+   "ground"
+  ]
+ },
+ "27D": {
+  "auto": true,
+  "name": "ground_49",
+  "tags": [
+   "ground"
+  ]
+ },
+ "27E": {
+  "auto": true,
+  "name": "ground_50",
+  "tags": [
+   "ground"
+  ]
+ },
+ "27F": {
+  "auto": true,
+  "name": "solid_7",
+  "tags": [
+   "solid"
   ]
  }
 }
