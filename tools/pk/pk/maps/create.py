@@ -162,8 +162,40 @@ def stamp(repo, tx, args, opts, pagination):
         return Result(f'stamp {rest[1]} placed in {grid.name} at {x},{y}', changed_view(grid, pair, cells, 'class'))
     if verb == 'from-tileset' and len(rest) == 3:
         return stamp_from_tileset(repo, tx, *rest, opts)
+    if verb == 'mine' and len(rest) == 1:
+        return stamp_mine(repo, tx, rest[0], opts)
     raise PkError('PARSE', 'usage: pk stamp extract MAP x,y,WxH name | pk stamp from-tileset SET.pkt OBJECT.px name'
+                           ' | pk stamp mine PAIR [--min-size 2x2] [--min-count 3] [--apply]'
                            ' | pk stamp ls [tileset] | pk stamp place MAP name x,y')
+
+
+def stamp_mine(repo, tx, word, opts):
+    """Repeated all-solid rectangles in the vanilla layouts of a tileset pair -> stamp proposals.
+    Only --apply writes them; it keeps the greedy subset that covers the most structure cells."""
+    from . import stamps as S
+    from .meta import pair_for
+    pair = pair_for(repo, word)
+    m = re.fullmatch(r'(\d+)x(\d+)', opts.get('min-size', '2x2'))
+    if not m:
+        raise PkError('PARSE', '--min-size is WxH, e.g. 2x2')
+    min_size = (int(m[1]), int(m[2]))
+    min_count = int(opts.get('min-count', 3))
+    cap = int(opts.get('cap', 32))
+    proposals = S.mine(repo, pair, min_size, min_count)
+    mined = S.to_stamps(repo, pair, proposals, S.tree_metatiles(repo, pair))
+    chosen = S.select(repo, pair, mined, cap)
+    rows = [f'{s["name"]} {s["size"][0]}x{s["size"][1]} from {s["source"]}' for s in chosen]
+    if opts.get('apply'):
+        written = 0
+        for s in chosen:
+            path = stamp_path(s['name'])
+            if not repo.root.joinpath(path).exists():
+                tx.stage(path, (json.dumps(s, separators=(',', ':')) + '\n').encode('utf-8'))
+                written += 1
+        return Result(f'stamp mine {pair.primary["symbol"]}+{pair.secondary["symbol"]} '
+                      f'{len(chosen)} selected, {written} applied', rows)
+    return Result(f'stamp mine {pair.primary["symbol"]}+{pair.secondary["symbol"]} '
+                  f'{len(mined)} repeated, {len(chosen)} selected (--apply writes)', rows)
 
 
 def stamp_from_tileset(repo, tx, spec_path, drawing, name, opts):

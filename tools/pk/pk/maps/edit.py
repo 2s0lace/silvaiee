@@ -105,6 +105,49 @@ def bits_opts(opts):
     return num('coll', 3), num('elev', 15)
 
 
+def stamp_overlay(grid, pair, rect, rows, show_events):
+    """Replace the class cells of recognised stamp instances with one symbol each and prepend
+    a legend ("H house_small @12,4"). Opt-in via `map show --stamps`."""
+    from . import stamps as S
+    from .layers import events as event_marks
+    library = S.load_stamps(grid.repo, pair)
+    found, _ = S.instances(grid, library)
+    if not found:
+        return rows
+    syms, used = {}, set()
+    for stamp, _, _ in found:
+        if stamp['name'] in syms:
+            continue
+        sym = stamp.get('sym') if stamp.get('sym') not in used else None
+        sym = sym or next(c for c in S.SYMBOLS if c not in used)
+        syms[stamp['name']] = sym
+        used.add(sym)
+    x0, y0, w, h = rect
+    marks = {}
+    for stamp, sx, sy in found:
+        sw, sh = stamp['size']
+        for j in range(sh):
+            for i in range(sw):
+                if stamp['cells'][j][i] is not None and x0 <= sx + i < x0 + w and y0 <= sy + j < y0 + h:
+                    marks[(sx + i, sy + j)] = syms[stamp['name']]
+    events_seen = event_marks(grid.data) if show_events else {}
+    for k, line in enumerate(rows):
+        m = re.fullmatch(r'(\d\d)\|(.*)', line)
+        if not m:
+            continue
+        y, cells = int(m[1]), list(m[2])
+        for i in range(min(w, len(cells))):
+            p = (x0 + i, y)
+            if p in marks and p not in events_seen:
+                cells[i] = marks[p]
+        rows[k] = f'{y:02d}|' + ''.join(cells)
+    counts = {}
+    for stamp, _, _ in found:
+        counts[stamp['name']] = counts.get(stamp['name'], 0) + 1
+    legend = ['stamps ' + ' '.join(f'{syms[n]}={n}x{counts[n]}' for n in syms)]
+    return legend + rows
+
+
 def command(repo, tx, args, opts):
     verb, rest = args[0], args[1:]
     layer = 'exact' if opts.get('exact') else 'class'
@@ -127,6 +170,8 @@ def command(repo, tx, args, opts):
                 rows.append(f'layer {name}')
             rows += render(grid, pair, rect, name, show_events)
         x, y, w, h = rect
+        if opts.get('stamps') and layers[0] == 'class':
+            rows = stamp_overlay(grid, pair, rect, rows, show_events)
         return Result(f'{grid.name} {grid.w}x{grid.h} rect {x},{y},{w}x{h} layer:{"+".join(layers)}', note + rows)
     if verb == 'render' and len(rest) == 1:
         from .meta import render_png

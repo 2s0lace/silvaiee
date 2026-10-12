@@ -1,9 +1,11 @@
 pk map ls [filter] | pk map info MAP
-pk map show MAP [--rect x,y,WxH] [--layer class|exact|coll|elev|all] [--exact] [--no-events]
+pk map show MAP [--rect x,y,WxH] [--layer class|exact|coll|elev|all] [--exact] [--no-events] [--stamps]
 Class view symbols: . ground # solid " grass ~ water : sand v ^ < > ledges D door | waterfall = counter * ice
 Named metatiles with --sym override their class symbol. Maps wider than 64 are shown in bands.
 Events overlay: W warp o npc i item s sign h hidden t trigger. Rows "yy|cells", rulers "x|tens" "x|units".
 --exact: one symbol per metatile plus legend "a=0x2A3(name)"; use --rect on busy maps.
+--stamps: each recognised stamp instance (data/stamps, mined or hand-made) becomes one symbol,
+ with a "stamps X=namexN" legend line; class cells not in a stamp are unchanged. Opt-in.
 --layer coll/elev alone: full grids, 0-3/0-F per cell. --layer all: class grid plus dominant values per class.
 Example: "layer coll by class: #=1 .=0; exceptions N", followed by "yy| x=v ..." (absolute coordinates).
 Exceptions override defaults, including every event-overlay cell; --no-events needs only differing values.

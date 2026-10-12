@@ -10,7 +10,7 @@ METATILE = 0x2A3 | 675 | name given with pk meta name.
 pk find "query" [--kind map|text|script|flag|var|trainer|gfx|behavior|layout|tileset|music]
 pk refs EXACT_LABEL_OR_CONSTANT
 pk map ls [filter] | pk map info MAP
-pk map show MAP [--rect x,y,WxH] [--exact] [--layer coll|elev|all] (help map: symbols)
+pk map show MAP [--rect x,y,WxH] [--exact] [--layer coll|elev|all] [--stamps] (help map: symbols)
 pk map lint MAP (BROKEN: uncalibrated, reports 0 on ugly maps; do not trust its score)
 pk map render MAP [--rect] [--scale 1] [--out file.png] (real graphics, for vision)
 pk map at MAP x,y | pk map paint MAP x,y[,WxH] METATILE | fill | line | grid | copy | border
@@ -21,7 +21,8 @@ pk map export MAP [--out file] | pk map import MAP file (lossless text: grid, co
 pk map extend-to MAP NEIGHBOUR | pk map new NAME --size WxH --tilesets P,S --fill METATILE
 pk terrain brush MAP rect|circle|path ... MATERIAL (water, grass, sand, ground, solid, ledge_s, tags)
 pk terrain river MAP x,y x,y [width=2] | ledge | forest --stamp tree | bake | learn | show
-pk stamp extract MAP x,y,WxH name | from-tileset SET.pkt OBJ.px name | place MAP name x,y | ls
+pk stamp extract MAP x,y,WxH name | from-tileset SET.pkt OBJ.px name | mine PAIR [--min-count 3] [--apply] | ls
+pk stamp place MAP name x,y
 pk bp check|plan|render|apply MAP | pk bp world | pk bp export MAP (help bp: blueprint format)
 pk tileset build art/X/tileset.pkt | pk tileset export MAP name | pk px show|check|render FILE.px
 pk sprite show|export GFX | pk sprite build FILE.px name --like GFX (NPC overworld sprites)

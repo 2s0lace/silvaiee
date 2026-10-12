@@ -88,7 +88,7 @@ def dispatch(repo, tx, argv):
         args, opts = options(tail, values=('offset', 'limit', 'rect', 'layer', 'from', 'coll', 'elev', 'add', 'to',
                                            'anchor', 'fill', 'size', 'tilesets', 'type', 'like', 'music', 'group', 'out', 'scale',
                                            'into'),
-                             flags=('exact', 'no-events', 'fork-layout', 'drop-out-of-bounds'))
+                             flags=('exact', 'no-events', 'fork-layout', 'drop-out-of-bounds', 'stamps'))
         if args and args[0] == 'paintover' and len(args) == 3:
             result = map_paintover.command(repo, tx, args, opts)
         elif args and args[0] == 'resize' and len(args) == 2:
@@ -144,9 +144,10 @@ def dispatch(repo, tx, argv):
         from pk.art import sprite as art_sprite
         result = art_sprite.command(repo, tx, args, opts)
     elif noun == 'stamp':
-        args, opts = options(tail, values=('offset', 'limit', 'walk', 'on'), flags=('overwrite',))
+        args, opts = options(tail, values=('offset', 'limit', 'walk', 'on', 'min-size', 'min-count', 'cap'),
+                             flags=('overwrite', 'apply'))
         if not args:
-            raise PkError('PARSE', 'usage: pk stamp extract|from-tileset|ls|place')
+            raise PkError('PARSE', 'usage: pk stamp extract|from-tileset|mine|ls|place')
         result = map_create.stamp(repo, tx, args, opts, pagination)
     elif noun == 'ev':
         args, opts = options(tail, values=('offset', 'limit'))

@@ -480,3 +480,32 @@
 - Reported as a miss per the task rule ("If a number misses its target, STOP and report the miss"),
   rather than papering over it. The diagonal code is committed with the default weight 0; steps 3-5
   do not depend on it.
+
+## Maintainer round 1 — step 3: stamp mining and detection (2026-10-12)
+- New pk/maps/stamps.py and `pk stamp mine PAIR [--min-size 2x2] [--min-count 3] [--cap 32] [--apply]`.
+  It seeds every 2x2 window of (metatile, coll, elev) in the vanilla layouts of the pair, then grows
+  each frequent window right and down while it stays frequent (keeping only the occurrences that
+  share the new column/row). Result: repeated rectangles — trees, house walls, fences, signs.
+- Only all-solid rectangles are kept. Mixed ground/solid patches repeat three times by chance and
+  produced ~7400 useless proposals; structure-only is what the task asks for and is what makes
+  coverage measurable.
+- A recognisable object is a maximal rectangle; the min-size (2x2) sub-blocks are kept too, because
+  a house is covered by tiling its 2x2 blocks. `--apply` writes only a greedy subset (cap 32) chosen
+  to cover the most still-uncovered structure cells, so the shipped library stays small.
+- `pk map show --stamps` (opt-in) replaces each recognised instance's cells with one unique symbol
+  and prepends a `stamps H=namexN ...` legend; events keep priority. The default `map show` output
+  and the golden tests are unchanged.
+- Acceptance target (>=80% of class-view solid '#' cells covered by a detected stamp), measured with
+  the shipped library (load_stamps: hand-made + mined), union of all exact matches:
+
+  | map | covered / structure | target |
+  |---|---|---|
+  | PalletTown_Frlg | 181/195 = **92.8%** | >=80% |
+  | ViridianCity_Frlg | 826/1003 = **82.4%** | >=80% |
+  | Route1_Frlg | 262/301 = **87.0%** | >=80% |
+
+  All three pass. Commands: `pk stamp mine PalletTown_Frlg --apply`, `pk stamp mine ViridianCity_Frlg
+  --apply` (32 stamps each, 64 shipped under tools/pk/data/stamps/mined_*). test_stamps.py checks
+  mining, selection, the no-overwrite guard, the overlay, and the three coverage numbers.
+- AGENT.md is 37 lines and `pk help` still equals it; help/map.md and help/stamp.md document the
+  new flag and command. Full suite: **117 tests, 1 failure** (map lint; step 5), 763 s.
