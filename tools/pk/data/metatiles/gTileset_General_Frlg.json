@@ -26,10 +26,9 @@
   ]
  },
  "005": {
-  "auto": true,
-  "name": "solid_38",
+  "name": "grass_12",
   "tags": [
-   "solid"
+   "grass"
   ]
  },
  "006": {
@@ -443,10 +442,9 @@
   ]
  },
  "045": {
-  "auto": true,
-  "name": "solid_199",
+  "name": "water_151",
   "tags": [
-   "solid"
+   "water"
   ]
  },
  "046": {
@@ -492,10 +490,9 @@
   ]
  },
  "04D": {
-  "auto": true,
-  "name": "solid_62",
+  "name": "water_133",
   "tags": [
-   "solid"
+   "water"
   ]
  },
  "04E": {
@@ -694,10 +691,9 @@
   ]
  },
  "06B": {
-  "auto": true,
-  "name": "solid_80",
+  "name": "path_11",
   "tags": [
-   "solid"
+   "path"
   ]
  },
  "06C": {
@@ -707,10 +703,9 @@
   ]
  },
  "06D": {
-  "auto": true,
-  "name": "solid_81",
+  "name": "path_8",
   "tags": [
-   "solid"
+   "path"
   ]
  },
  "06E": {
@@ -785,10 +780,9 @@
   ]
  },
  "07B": {
-  "auto": true,
-  "name": "solid_82",
+  "name": "path_6",
   "tags": [
-   "solid"
+   "path"
   ]
  },
  "07C": {
@@ -798,10 +792,9 @@
   ]
  },
  "07D": {
-  "auto": true,
-  "name": "solid_83",
+  "name": "path_7",
   "tags": [
-   "solid"
+   "path"
   ]
  },
  "080": {
@@ -867,17 +860,15 @@
   ]
  },
  "089": {
-  "auto": true,
-  "name": "solid_130",
+  "name": "water_143",
   "tags": [
-   "solid"
+   "water"
   ]
  },
  "08A": {
-  "auto": true,
-  "name": "solid_131",
+  "name": "path_10",
   "tags": [
-   "solid"
+   "path"
   ]
  },
  "08B": {
@@ -923,10 +914,9 @@
   ]
  },
  "091": {
-  "auto": true,
-  "name": "ground_124",
+  "name": "water_145",
   "tags": [
-   "ground"
+   "water"
   ]
  },
  "092": {
@@ -1112,15 +1102,13 @@
   ]
  },
  "0B0": {
-  "auto": true,
-  "name": "ledge_s_4",
+  "name": "ledge_s_13",
   "tags": [
    "ledge_s"
   ]
  },
  "0B1": {
-  "auto": true,
-  "name": "ledge_s_5",
+  "name": "ledge_s_12",
   "tags": [
    "ledge_s"
   ]
@@ -1196,10 +1184,9 @@
   ]
  },
  "0BE": {
-  "auto": true,
-  "name": "ground_13",
+  "name": "grass_13",
   "tags": [
-   "ground"
+   "grass"
   ]
  },
  "0BF": {
@@ -1245,24 +1232,21 @@
   ]
  },
  "0C5": {
-  "auto": true,
-  "name": "ground_17",
+  "name": "grass_18",
   "tags": [
-   "ground"
+   "grass"
   ]
  },
  "0C6": {
-  "auto": true,
-  "name": "ground_18",
+  "name": "grass_15",
   "tags": [
-   "ground"
+   "grass"
   ]
  },
  "0C7": {
-  "auto": true,
-  "name": "ground_19",
+  "name": "grass_19",
   "tags": [
-   "ground"
+   "grass"
   ]
  },
  "0C8": {
@@ -1308,10 +1292,9 @@
   ]
  },
  "0CE": {
-  "auto": true,
-  "name": "ground_23",
+  "name": "grass_16",
   "tags": [
-   "ground"
+   "grass"
   ]
  },
  "0CF": {
@@ -1466,10 +1449,9 @@
   ]
  },
  "0E6": {
-  "auto": true,
-  "name": "solid_84",
+  "name": "grass_10",
   "tags": [
-   "solid"
+   "grass"
   ]
  },
  "0E7": {
@@ -1733,8 +1715,7 @@
   ]
  },
  "10D": {
-  "auto": true,
-  "name": "sand_2",
+  "name": "sand_26",
   "tags": [
    "sand"
   ]
@@ -1780,8 +1761,7 @@
   ]
  },
  "114": {
-  "auto": true,
-  "name": "water_25",
+  "name": "water_148",
   "tags": [
    "water"
   ]
@@ -1793,8 +1773,7 @@
   ]
  },
  "116": {
-  "auto": true,
-  "name": "water_26",
+  "name": "water_144",
   "tags": [
    "water"
   ]
@@ -1840,8 +1819,7 @@
   ]
  },
  "11D": {
-  "auto": true,
-  "name": "water_30",
+  "name": "water_134",
   "tags": [
    "water"
   ]
@@ -1990,10 +1968,9 @@
   ]
  },
  "133": {
-  "auto": true,
-  "name": "ground_2",
+  "name": "grass_11",
   "tags": [
-   "ground"
+   "grass"
   ]
  },
  "134": {
@@ -2067,10 +2044,9 @@
   ]
  },
  "13E": {
-  "auto": true,
-  "name": "solid_190",
+  "name": "grass_20",
   "tags": [
-   "solid"
+   "grass"
   ]
  },
  "13F": {
@@ -2312,10 +2288,9 @@
   ]
  },
  "166": {
-  "auto": true,
-  "name": "ground_33",
+  "name": "grass_14",
   "tags": [
-   "ground"
+   "grass"
   ]
  },
  "167": {
@@ -2368,10 +2343,9 @@
   ]
  },
  "16E": {
-  "auto": true,
-  "name": "ground_39",
+  "name": "water_131",
   "tags": [
-   "ground"
+   "water"
   ]
  },
  "16F": {
@@ -2424,10 +2398,9 @@
   ]
  },
  "176": {
-  "auto": true,
-  "name": "ground_45",
+  "name": "grass_17",
   "tags": [
-   "ground"
+   "grass"
   ]
  },
  "177": {
@@ -2711,8 +2684,7 @@
   ]
  },
  "1A6": {
-  "auto": true,
-  "name": "water_48",
+  "name": "water_153",
   "tags": [
    "water"
   ]
@@ -2767,8 +2739,7 @@
   ]
  },
  "1AE": {
-  "auto": true,
-  "name": "water_56",
+  "name": "water_132",
   "tags": [
    "water"
   ]
@@ -2900,10 +2871,9 @@
   ]
  },
  "1C1": {
-  "auto": true,
-  "name": "ground_84",
+  "name": "water_135",
   "tags": [
-   "ground"
+   "water"
   ]
  },
  "1C2": {
@@ -2956,10 +2926,9 @@
   ]
  },
  "1C9": {
-  "auto": true,
-  "name": "ground_89",
+  "name": "grass_21",
   "tags": [
-   "ground"
+   "grass"
   ]
  },
  "1CA": {
@@ -3003,8 +2972,7 @@
   ]
  },
  "1D0": {
-  "auto": true,
-  "name": "water_66",
+  "name": "water_138",
   "tags": [
    "water"
   ]
@@ -3017,8 +2985,7 @@
   ]
  },
  "1D2": {
-  "auto": true,
-  "name": "water_68",
+  "name": "water_142",
   "tags": [
    "water"
   ]
@@ -3057,8 +3024,7 @@
   ]
  },
  "1D8": {
-  "auto": true,
-  "name": "water_69",
+  "name": "water_147",
   "tags": [
    "water"
   ]
@@ -3112,22 +3078,19 @@
   ]
  },
  "1E0": {
-  "auto": true,
-  "name": "water_74",
+  "name": "water_141",
   "tags": [
    "water"
   ]
  },
  "1E1": {
-  "auto": true,
-  "name": "water_75",
+  "name": "water_149",
   "tags": [
    "water"
   ]
  },
  "1E2": {
-  "auto": true,
-  "name": "water_76",
+  "name": "water_146",
   "tags": [
    "water"
   ]
@@ -3385,10 +3348,9 @@
   ]
  },
  "207": {
-  "auto": true,
-  "name": "solid_142",
+  "name": "path_9",
   "tags": [
-   "solid"
+   "path"
   ]
  },
  "208": {
@@ -3455,15 +3417,13 @@
   ]
  },
  "212": {
-  "auto": true,
-  "name": "water_101",
+  "name": "water_139",
   "tags": [
    "water"
   ]
  },
  "213": {
-  "auto": true,
-  "name": "water_102",
+  "name": "water_140",
   "tags": [
    "water"
   ]
@@ -3511,15 +3471,13 @@
   ]
  },
  "21A": {
-  "auto": true,
-  "name": "water_108",
+  "name": "water_136",
   "tags": [
    "water"
   ]
  },
  "21B": {
-  "auto": true,
-  "name": "water_109",
+  "name": "water_137",
   "tags": [
    "water"
   ]
@@ -3896,10 +3854,9 @@
   ]
  },
  "26B": {
-  "auto": true,
-  "name": "solid_159",
+  "name": "water_152",
   "tags": [
-   "solid"
+   "water"
   ]
  },
  "26C": {
@@ -3952,17 +3909,15 @@
   ]
  },
  "273": {
-  "auto": true,
-  "name": "solid_161",
+  "name": "water_130",
   "tags": [
-   "solid"
+   "water"
   ]
  },
  "274": {
-  "auto": true,
-  "name": "ground_100",
+  "name": "water_150",
   "tags": [
-   "ground"
+   "water"
   ]
  },
  "275": {

@@ -554,6 +554,17 @@
 - Removed the BROKEN notes: lint.py docstring and WARN BROKEN line, help/map.md, AGENT.md (still 37
   lines), release/silvaiee/README.md Known issues; un-skipped the lint test in release/silvaiee.
 - Full suite: **117 tests, 0 failures** (the lint test now passes).
+
+## Maintainer round 1 — step 4 continued: second General_Frlg batch (2026-10-12, owner said go ahead)
+- Named the next 45 walkable General_Frlg metatiles (no manual name) after the first batch: 24 water,
+  12 grass, 6 path, 2 ledge_s, 1 sand. Solid buildings are skipped (autoname already tags them
+  `solid_N`; a semantic name adds nothing). Counters continue from the existing names, so no
+  collisions (checked: no duplicate names in the pair).
+- Because naming changes lint's materials, the lint calibration was re-checked: ViridianForest_Frlg
+  moved from 0 to 11 (rare), so the vanilla fixture set uses Route3_Frlg instead (still 0). The ugly
+  fixtures (1-3) and the benchmark order (Muse 22 > DeepSeek 12 > Sonnet 9 > Opus 5) are unchanged.
+- General_Frlg now has 109 manual names (64 before step 4, +45 first batch, +45 this batch).
+- Full suite: **117 tests, 0 failures**.
 - Per-tileset after this batch (used / manual-named / auto-named):
 
   | tileset | used | manual | auto |

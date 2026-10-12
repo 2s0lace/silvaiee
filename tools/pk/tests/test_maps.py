@@ -323,7 +323,7 @@ class Lint(unittest.TestCase):
         benchmark maps with the worse human scores (Muse 1, Sonnet 2, DeepSeek 2.5) score
         clearly worse than the best one (Opus 6)."""
         from pk.maps import lint
-        vanilla = ('PalletTown_Frlg', 'Route1_Frlg', 'Route2_Frlg', 'LavenderTown_Frlg', 'ViridianForest_Frlg')
+        vanilla = ('PalletTown_Frlg', 'Route1_Frlg', 'Route2_Frlg', 'LavenderTown_Frlg', 'Route3_Frlg')
         ugly = ('PkLintRect_Frlg', 'PkLintStraight_Frlg', 'PkLintStairs_Frlg', 'PkLintSeam_Frlg',
                 'PkLintEmpty_Frlg', 'PkPalletMuse_Frlg', 'PkPalletSonnet_Frlg', 'PkPalletDeepSeek_Frlg')
         score = lambda name: int(lint.run(self.repo, name).summary.split('score:')[1])
