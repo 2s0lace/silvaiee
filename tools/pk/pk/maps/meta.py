@@ -194,8 +194,11 @@ def command(repo, tx, args, opts, pagination):
     raise PkError('PARSE', 'usage: pk meta ls|name|autoname|show <map|primary,secondary> ...; see pk help meta')
 
 
-def render_png(repo, grid, pair, rect, scale=1):
-    """RGBA image of the real tiles for a map rect (vision callers and humans)."""
+def render_png(repo, grid, pair, rect, scale=1, grid_lines=False):
+    """RGBA image of the real tiles for a map rect (vision callers and humans).
+
+    grid_lines draws the 15x10 screen grid: a 1px line on every tile boundary and a 2px line
+    every 15 columns / 10 rows, so a reviewer can see where the GBA screen falls."""
     import io
     x0, y0, w, h = rect
     img = Image.new('RGBA', (w * 16, h * 16), (0, 0, 0, 255))
@@ -212,8 +215,36 @@ def render_png(repo, grid, pair, rect, scale=1):
                                 tile.putpixel((i, j), (*p, 255))
                 cache[mt] = tile
             img.paste(cache[mt], ((x - x0) * 16, (y - y0) * 16))
+    if grid_lines:
+        from PIL import ImageDraw
+        pen = ImageDraw.Draw(img, 'RGBA')
+        for gx in range(w + 1):
+            major = gx % 15 == 0
+            pen.line([(gx * 16, 0), (gx * 16, img.height)],
+                     fill=(0, 0, 0, 170) if major else (255, 255, 255, 80), width=2 if major else 1)
+        for gy in range(h + 1):
+            major = gy % 10 == 0
+            pen.line([(0, gy * 16), (img.width, gy * 16)],
+                     fill=(0, 0, 0, 170) if major else (255, 255, 255, 80), width=2 if major else 1)
     if scale != 1:
         img = img.resize((img.width * scale, img.height * scale), Image.NEAREST)
+    buf = io.BytesIO()
+    img.save(buf, 'PNG')
+    return buf.getvalue()
+
+
+def render_compare(repo, left, right, scale=1, grid_lines=False, gap=1):
+    """Two maps' full images side by side (A left, B right) with a `gap`-tile gap at the same
+    scale, for before/after review. Returns PNG bytes."""
+    import io
+    (grid_a, pair_a), (grid_b, pair_b) = left, right
+    rect_a, rect_b = (0, 0, grid_a.w, grid_a.h), (0, 0, grid_b.w, grid_b.h)
+    tile = 16 * scale
+    a = Image.open(io.BytesIO(render_png(repo, grid_a, pair_a, rect_a, scale, grid_lines)))
+    b = Image.open(io.BytesIO(render_png(repo, grid_b, pair_b, rect_b, scale, grid_lines)))
+    img = Image.new('RGBA', (a.width + gap * tile + b.width, max(a.height, b.height)), (0, 0, 0, 255))
+    img.paste(a, (0, 0))
+    img.paste(b, (a.width + gap * tile, 0))
     buf = io.BytesIO()
     img.save(buf, 'PNG')
     return buf.getvalue()

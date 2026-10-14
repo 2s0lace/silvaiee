@@ -802,4 +802,13 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   (10,16) onto `PkSandbox2_Frlg` at (2,4) -> **24 seams without `--repair`, 2 with** (29 cells changed).
 - `terrain.Rules(include_pk=False)` is used by repair: Pk* drafts are never reference data.
 
+## Round 2 B6: viewport renders (2026-10-14)
+- `pk map render MAP --viewport x,y` renders the 15x10 GBA screen at x,y (scale 3 by default).
+  `--grid` draws the 15x10 screen grid (1px tile lines, 2px every 15 columns / 10 rows). `--compare B`
+  renders A and B side by side at the same scale with a 1-tile gap (default
+  `.pk/render/A_vs_B.png`), for before/after review. The four polished maps' images are
+  `.pk/render/compare_<Model>.png`.
+- Test: `test_maps.SeamRepair.test_render_viewport_grid_and_compare`.
+
+
 
