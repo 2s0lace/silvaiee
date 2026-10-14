@@ -777,3 +777,17 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   target stays: every map with human score <= 4 has severity > Opus (passes: Sonnet 9.7, Sol 16.7,
   Muse 18.2, DeepSeek 29.8 vs Opus 8.2).
 - No threshold or formula changed. The README note stays "experimental" until the owner's tests.
+
+## Round 2 B1: patch critic (3x3 window share) (2026-10-14)
+- New info-only `patch:P` in the lint summary: the share of the map's 3x3 metatile windows that occur
+  in the vanilla snapshot (sockets applied, like SEAM). The snapshot (v2, ~13.5 MB, rebuilt by
+  `pk map lint --snapshot` in ~20 s) now stores, per tileset pair, the 3x3 windows counted once per
+  distinct vanilla layout.
+- Leave-one-out: for a vanilla map its own layout contribution is subtracted before "seen", so a map's
+  own windows never count (the round-1 SEAM bug). Vanilla: p5 **0.03**, p50 **0.35**, max 1.00 (maps on a
+  unique secondary tileset score low by construction). Benchmarks: Muse 0.78, Sonnet 0.85, DeepSeek 0.72,
+  Sol 0.76, Astra 0.81, Gemini 0.75, Opus 0.81.
+- `patch` never changes score or severity; it is only a tie-breaker for polish. When the snapshot has no
+  windows, lint prints `INFO patch unavailable`.
+- Test: `test_maps.Lint.test_patch_critic_is_leave_one_out_and_info_only`.
+

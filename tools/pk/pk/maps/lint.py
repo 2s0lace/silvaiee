@@ -21,7 +21,7 @@ from .terrain import Rules
 
 LINT_JSON = 'tools/pk/data/lint_map.json'
 SNAPSHOT_JSON = 'tools/pk/data/vanilla_adjacency.json'
-SNAPSHOT_VERSION = 1
+SNAPSHOT_VERSION = 2      # v2 adds the 3x3 window counts ("patch" critic)
 PK_LAYOUT = 'LAYOUT_PK_'
 
 CHECKS = [('natural', list), ('decor_tags', list), ('stair_min_steps', int), ('stair_min_run', int),
@@ -99,6 +99,53 @@ def socket_of(pair, mt):
     return int(sock) if sock is not None else mt
 
 
+def window_key(ids):
+    """Pack one 3x3 window (9 metatile ids, each < 4096) into a hex string for the snapshot."""
+    value = 0
+    for metatile in ids:
+        value = (value << 12) | metatile
+    return format(value, 'x')
+
+
+def window_share(grid, pair, snap, name):
+    """Share of the map's 3x3 metatile windows that occur in the vanilla snapshot (sockets applied).
+
+    The snapshot stores, per window, how many *distinct* vanilla layouts contain it. For a vanilla
+    map its own layout is one of them, so we subtract 1 before deciding "seen" (leave-one-out);
+    otherwise a window only this map has would count as seen and every vanilla map would score 1.0."""
+    if snap is None:
+        return None
+    stats = snap.pair(pair)
+    if stats is None or not stats.windows:
+        return None
+    if grid.w < 3 or grid.h < 3:
+        return 1.0
+    table = stats.windows
+    loo = name in snap.maps
+    sockets = {}
+    own, keys = set(), []
+    for y in range(grid.h - 2):
+        for x in range(grid.w - 2):
+            ids = []
+            for dy in range(3):
+                for dx in range(3):
+                    mt = grid.at(x + dx, y + dy)[0]
+                    if mt not in sockets:
+                        sockets[mt] = socket_of(pair, mt)
+                    ids.append(sockets[mt])
+            key = window_key(ids)
+            keys.append(key)
+            own.add(key)
+    seen = 0
+    for key in keys:
+        count = table.get(key, 0)
+        if loo and key in own:
+            count -= 1
+        if count > 0:
+            seen += 1
+    return seen / len(keys)
+
+
 class PairStats:
     """Snapshot statistics of one tileset pair; h/v are tuple-keyed for membership tests."""
 
@@ -107,6 +154,7 @@ class PairStats:
         self.metatiles = set(data['metatiles'])
         self.h = {tuple(int(v) for v in k.split(',')): c for k, c in data['h'].items()}
         self.v = {tuple(int(v) for v in k.split(',')): c for k, c in data['v'].items()}
+        self.windows = data.get('w') or {}      # 3x3 window key -> number of distinct vanilla layouts
 
 
 class Snap:
@@ -411,10 +459,10 @@ def empty(meta, grid, pair, cfg):
     return rows, counted
 
 
-def analyze(repo, query, cfg, snap, pair_rules_fn=pair_rules):
-    """Raw counts + WARN rows of every check. seams/rare are None when snap can't answer."""
-    grid, pair = load(repo, query)
-    rules = pair_rules_fn(repo, pair)
+def measure(grid, pair, cfg, snap, rules):
+    """Raw counts + WARN rows of every check for an in-memory grid. seams/rare are None when
+    snap can't answer. Shared by the CLI (which loads first) and the polish loop (which works
+    on a staged copy without re-reading the file)."""
     mat = {(x, y): rules.material(grid.at(x, y)) for y in range(grid.h) for x in range(grid.w)}
     meta = dict(cfg, mat=mat, marks=events(grid.data), rules=rules, pair=pair,
                 map_type=grid.data.get('map_type'))
@@ -435,6 +483,13 @@ def analyze(repo, query, cfg, snap, pair_rules_fn=pair_rules):
     warns['rects'] = rect_rows
     empty_rows, counts['empty'] = empty(meta, grid, pair, cfg)
     warns['empty'] = empty_rows
+    return counts, warns, unchecked
+
+
+def analyze(repo, query, cfg, snap, pair_rules_fn=pair_rules):
+    """Raw counts + WARN rows of every check. seams/rare are None when snap can't answer."""
+    grid, pair = load(repo, query)
+    counts, warns, unchecked = measure(grid, pair, cfg, snap, pair_rules_fn(repo, pair))
     return grid, pair, counts, warns, unchecked
 
 
@@ -444,6 +499,7 @@ def run(repo, query, show_all=False):
     grid, pair, counts, warns, unchecked = analyze(repo, query, cfg, snap)
     stratum = stratum_of(grid.data.get('map_type'))
     score, severity = severity_scores(counts, cfg['strata'], stratum, grid.w * grid.h)
+    patch = window_share(grid, pair, snap, grid.name)
     cap = cfg['max_lines']
     rows, cut = [], []
     for metric, check in (('seams', 'SEAM'), ('stairs', 'STAIR'), ('rare', 'RARE'),
@@ -461,6 +517,8 @@ def run(repo, query, show_all=False):
     infos = []
     if counts['seams'] is None or counts['rare'] is None:
         infos.append('INFO no snapshot; run pk map lint --snapshot')
+    elif patch is None:
+        infos.append('INFO patch unavailable; rerun pk map lint --snapshot for the 3x3 windows')
     infos += [f'INFO UNCHECKED 0x{rid:03X} x{n} (no socket)' for rid, n in sorted(unchecked.items())]
     infos += cut
     header = (f'lint {grid.name} stratum:{stratum} '
@@ -469,7 +527,8 @@ def run(repo, query, show_all=False):
     base = snap.maps.get(grid.name) if snap else None
     if base is not None:
         delta = f' (vanilla:{base.get("severity", 0.0):.1f}, {severity - base.get("severity", 0.0):+.1f})'
-    summary = f'{header} score:{score} severity:{severity:.1f}{delta}'
+    patch_text = '' if patch is None else f' patch:{patch:.2f}'
+    summary = f'{header} score:{score} severity:{severity:.1f}{delta}{patch_text}'
     return Result(summary, infos + rows)
 
 
@@ -497,8 +556,9 @@ def build_pairs(repo):
         except PkError:
             continue
         entry = pairs.setdefault(key, dict(layouts=0, metatiles=set(),
-                                           h={}, v={}, ne={}, nw={}, se={}, sw={}))
+                                           h={}, v={}, ne={}, nw={}, se={}, sw={}, w={}))
         entry['layouts'] += 1
+        layout_windows = set()
         for y in range(h):
             for x in range(w):
                 a = cells[y * w + x][0]
@@ -521,6 +581,13 @@ def build_pairs(repo):
                 if x > 0 and y + 1 < h:
                     k = f'{a},{cells[(y + 1) * w + x - 1][0]}'
                     entry['sw'][k] = entry['sw'].get(k, 0) + 1
+        # 3x3 windows counted once per distinct layout, so leave-one-out can subtract one map.
+        for y in range(h - 2):
+            for x in range(w - 2):
+                layout_windows.add(window_key([cells[(y + dy) * w + x + dx][0]
+                                               for dy in range(3) for dx in range(3)]))
+        for k in layout_windows:
+            entry['w'][k] = entry['w'].get(k, 0) + 1
     for entry in pairs.values():
         entry['metatiles'] = sorted(entry['metatiles'])
     return pairs
