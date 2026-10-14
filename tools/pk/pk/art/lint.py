@@ -233,26 +233,33 @@ def preview(repo, tx, spec_path, opts):
         rules = Rules(repo, pair)
     except PkError:
         raise PkError('NOTFOUND', f'{spec.symbol} is not built yet; run pk tileset build first (or --dry-run fails too)')
-    backgrounds = []
+    gbs = {}
     for mat in ('ground', 'sand', 'water'):
         ids = rules.by_mat.get(mat)
         if ids:
-            backgrounds.append((mat, draw(repo, pair, max(ids, key=lambda m: rules.freq.get(m, 0)))))
+            gbs[mat] = draw(repo, pair, max(ids, key=lambda m: rules.freq.get(m, 0)))
     files = list(dict.fromkeys(e['file'] for e in new_entries(spec)))
     if not files:
         raise PkError('NOTFOUND', f'{spec_path}: no new metatiles (lines without attr=)')
     pieces = [parse(repo, f'{spec.folder}/{f}') for f in files]
     cell_w = max(d.w for d in pieces) + 32
     cell_h = max(d.h for d in pieces) + 32
-    sheet = Image.new('RGB', (cell_w * len(backgrounds), cell_h * len(pieces)), (0, 0, 0))
+    # 4 honest columns: the full piece on a checker, then the TOP layer only over ground, sand
+    # and water, so a ground bottom never paints over the sand/water background it is judged on.
+    columns = ('full',) + tuple(m for m in ('ground', 'sand', 'water') if m in gbs)
+    sheet = Image.new('RGB', (cell_w * len(columns), cell_h * len(pieces)), (0, 0, 0))
     for r, d in enumerate(pieces):
-        for c, (mat, bg) in enumerate(backgrounds):
+        for c, name in enumerate(columns):
             x0, y0 = c * cell_w, r * cell_h
+            bg = gbs.get(name)
             for y in range(cell_h):
                 for x in range(cell_w):
-                    p = bg[y % 16][x % 16]
+                    if bg is None:
+                        p = (36, 36, 36) if (x // 8 + y // 8) % 2 else (24, 24, 24)
+                    else:
+                        p = bg[y % 16][x % 16]
                     sheet.putpixel((x0 + x, y0 + y), p or (0, 0, 0))
-            for layer in ('bottom', 'top'):
+            for layer in (('bottom', 'top') if bg is None else ('top',)):
                 for y, row in enumerate(d.layers[layer]):
                     for x, p in enumerate(row):
                         if p:
@@ -264,4 +271,4 @@ def preview(repo, tx, spec_path, opts):
     out = opts.get('out') or f'.pk/render/{spec.name}_preview.png'
     tx.stage(repo.path(out).relative_to(repo.root).as_posix(), buf.getvalue())
     return Result(f'tileset preview -> {out}',
-                  [f'rows: {" ".join(files)}', f'columns: {" ".join(m for m, _ in backgrounds)}'])
+                  [f'rows: {" ".join(files)}', f'columns: {" ".join(columns)}'])
