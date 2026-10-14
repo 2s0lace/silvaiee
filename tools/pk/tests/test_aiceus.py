@@ -77,7 +77,7 @@ class Aiceus(unittest.TestCase):
         status, ctype, body = self.call('/')
         self.assertEqual(status, 200)
         self.assertEqual(ctype, 'text/html')
-        self.assertIn(b'aiceus', body)
+        self.assertIn(b'aiceus', body.lower())  # real page says "Aiceus", placeholder "aiceus"
 
     def test_maps_catalog(self):
         status, doc = self.json_call('/api/maps')
