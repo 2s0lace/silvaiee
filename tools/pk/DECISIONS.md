@@ -743,3 +743,22 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - Tests: `test_maps.Lint.test_lint_cut_reports_more_and_all_prints_every_line` and
   `test_maps.Lint.test_map_ls_has_type_and_layout_dir`.
 
+## aiceus backend v1 (read-only) (2026-10-14)
+- `aiceus/server.py` (Python stdlib only) listens on 127.0.0.1 (default 8765) and answers every request
+  by running `python tools/pk/pk.py ... --json`; it never reads map.bin/map.json/scripts.inc, and it
+  follows `MORE n` / `--offset`. Routes: `/` (index.html, else a one-line placeholder), `/api/maps`,
+  `/api/map/NAME`, `/api/render/NAME.png?scale=1..4`, `/api/tickets`, `POST /api/ticket`. Failures are
+  `{"ok":false,"error":"CODE message"}` with 400/404/500.
+- `/api/maps` is outdoor FRLG maps (`*_Frlg` + town/city/route/ocean) plus `Pk*`, built from one
+  `pk map ls --all`. `/api/map/NAME` parses every WARN/INFO row of `pk map lint NAME --all`: `@x,y` is a
+  1x1 box, `x,y-x2,y2` a box, a positionless line (INFO) is x=y=-1, and `check` is the word after WARN
+  (INFO for INFO lines). Renders are cached per (map, scale) and re-run only when `data/maps/NAME` or the
+  layout directory is newer than the PNG.
+- The only file the server writes itself is `.pk/aiceus/tickets.md`: one line per ticket,
+  `MAP x,y-WxH: note` (or `MAP @x,y: note` for a single cell). It rejects an empty note, an unknown map
+  or a box outside the map. `--tickets`/`--index` exist only so tests can redirect those paths.
+- `tools/pk/tests/test_aiceus.py` starts the server on a free port and calls every endpoint, including a
+  bad map name (404) and a ticket outside the map (400). `GET /api/map/PkPalletOpus_Frlg` returns
+  **28 SEAM** and **27 RARE** items, equal to the summary's `seams:28 rare:27`. Full suite: **131 tests,
+  0 failures** (697 s).
+
