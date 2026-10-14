@@ -374,6 +374,25 @@ class Lint(unittest.TestCase):
         self.assertEqual(lint.empty(dict(meta, mat=varied), grid, FakePair(), cfg), ([], 0),
                          'a material-entropy floor rescues a varied window')
 
+    def test_severity_formula(self):
+        # A6: severity = 100 / area * sum over fired checks of (value - threshold); each check
+        # weighs 1; a threshold of 0 contributes the value itself; a score-0 map is 0.0.
+        from pk.maps import lint
+        strata = {'town': {'seams': {'p95': 0, 'max': 0, 'n': 1},
+                           'rare': {'p95': 2, 'max': 2, 'n': 1},
+                           'stairs': {'p95': 1, 'max': 1, 'n': 1}}}
+        # seams 10 > 0 -> excess 10; rare 2 > 2 false; stairs 1 > 1 false
+        self.assertEqual(lint.severity_scores(dict(seams=10, rare=2, stairs=1), strata, 'town', 100),
+                         (1, 10.0))
+        # rare and stairs both fire: (4-2) + (3-1) = 4 over 50 cells
+        self.assertEqual(lint.severity_scores(dict(seams=0, rare=4, stairs=3), strata, 'town', 50),
+                         (2, 8.0))
+        self.assertEqual(lint.severity_scores(dict(seams=0, rare=0, stairs=0), strata, 'town', 480),
+                         (0, 0.0))
+        # a skipped check (None, e.g. no snapshot) is not counted
+        self.assertEqual(lint.severity_scores(dict(seams=None, rare=4, stairs=0), strata, 'town', 100),
+                         (1, 2.0))
+
     def test_socketed_custom_metatile_checks_ground(self):
         # A3: bench_v2_l/r carry socket=0x296 (meadow). On a meadow field every adjacency is
         # vanilla-seen (0 SEAM); on deep water the bench<->water pair was never seen (>=1 SEAM).

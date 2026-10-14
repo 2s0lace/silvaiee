@@ -77,6 +77,21 @@ def metric_threshold(strata, stratum, metric):
     return stats['p95'] if stats.get('n', 0) >= 20 else stats['max']
 
 
+def severity_scores(counts, strata, stratum, area):
+    """(score, severity). score = number of checks whose value exceeds its stratum threshold.
+    severity = 100 / area * sum over the fired checks of (value - threshold), each check weighted 1;
+    a threshold of 0 contributes the value itself. Unfired checks add 0, so score-0 maps are 0.0."""
+    score, excess = 0, 0
+    for metric, value in counts.items():
+        if value is None:
+            continue
+        threshold = metric_threshold(strata, stratum, metric)
+        if threshold is not None and value > threshold:
+            score += 1
+            excess += value - threshold
+    return score, round(excess * 100 / max(1, area), 1)
+
+
 def socket_of(pair, mt):
     """A custom metatile declares a vanilla `socket` metatile: SEAM/RARE test the socket."""
     info = pair.info(mt) or {}
@@ -428,21 +443,16 @@ def run(repo, query):
     snap = load_snapshot(repo)
     grid, pair, counts, warns, unchecked = analyze(repo, query, cfg, snap)
     stratum = stratum_of(grid.data.get('map_type'))
-    fired, unavailable = {}, []
-    for metric, value in counts.items():
-        if value is None:
-            unavailable.append(metric)
-            continue
-        threshold = metric_threshold(cfg['strata'], stratum, metric)
-        fired[metric] = threshold is not None and value > threshold
-    score = sum(1 for ok in fired.values() if ok)
+    score, severity = severity_scores(counts, cfg['strata'], stratum, grid.w * grid.h)
     cap = cfg['max_lines']
     rows = []
     for metric in ('seams', 'stairs', 'rare', 'rects', 'empty'):
-        if fired.get(metric):
+        value = counts.get(metric)
+        threshold = metric_threshold(cfg['strata'], stratum, metric)
+        if value is not None and threshold is not None and value > threshold:
             rows += sorted(warns[metric])[:cap]
     infos = []
-    if 'seams' in unavailable or 'rare' in unavailable:
+    if counts['seams'] is None or counts['rare'] is None:
         infos.append('INFO no snapshot; run pk map lint --snapshot')
     infos += [f'INFO UNCHECKED 0x{rid:03X} x{n} (no socket)' for rid, n in sorted(unchecked.items())]
     header = (f'lint {grid.name} stratum:{stratum} '
@@ -450,8 +460,8 @@ def run(repo, query):
     delta = ''
     base = snap.maps.get(grid.name) if snap else None
     if base is not None:
-        delta = f' (vanilla:{base["score"]}, {score - base["score"]:+d})'
-    summary = f'{header} score:{score}{delta}'
+        delta = f' (vanilla:{base.get("severity", 0.0):.1f}, {severity - base.get("severity", 0.0):+.1f})'
+    summary = f'{header} score:{score} severity:{severity:.1f}{delta}'
     return Result(summary, infos + rows)
 
 
@@ -540,25 +550,21 @@ def build_snapshot(repo, tx):
     snap = Snap(dict(pairs=pairs, maps={}))
     baselines = []
     for name, stratum in vanilla_outdoor(repo):
-        _, _, counts, _, _ = analyze(repo, name, cfg, snap)
-        baselines.append(dict(name=name, stratum=stratum, counts=counts))
+        grid, _, counts, _, _ = analyze(repo, name, cfg, snap)
+        baselines.append(dict(name=name, stratum=stratum, counts=counts, area=grid.w * grid.h))
     strata = derive_strata(baselines)
     maps = {}
     for base in baselines:
-        score = 0
-        for metric, value in base['counts'].items():
-            if value is None:
-                continue
-            threshold = metric_threshold(strata, base['stratum'], metric)
-            if threshold is not None and value > threshold:
-                score += 1
-        maps[base['name']] = dict(stratum=base['stratum'],
-                                  **{k: v for k, v in base['counts'].items()}, score=score)
+        score, severity = severity_scores(base['counts'], strata, base['stratum'], base['area'])
+        maps[base['name']] = dict(stratum=base['stratum'], area=base['area'],
+                                  **{k: v for k, v in base['counts'].items()},
+                                  score=score, severity=severity)
     doc = dict(version=SNAPSHOT_VERSION, pairs=pairs, maps=maps)
     tx.stage(SNAPSHOT_JSON, (json.dumps(doc, sort_keys=True) + '\n').encode('utf-8'))
     cfg['strata'] = strata
     tx.stage(LINT_JSON, (json.dumps(cfg, indent=2, sort_keys=True) + '\n').encode('utf-8'))
     nonzero = sum(1 for m in maps.values() if m['score'])
+    worst = max((m['severity'] for m in maps.values()), default=0.0)
     return Result(f'snapshot {SNAPSHOT_JSON} pairs:{len(pairs)} maps:{len(maps)} '
-                  f'nonzero:{nonzero}',
+                  f'nonzero:{nonzero} max_severity:{worst:.1f}',
                   [f'thresholds written to {LINT_JSON}'])

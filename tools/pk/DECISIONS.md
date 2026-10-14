@@ -698,3 +698,16 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   every fixture and the <=4 benchmarks score above the vanilla max (PASS); Muse/Sonnet > DeepSeek > Opus
   (FAIL, all 2); bench on grass 0 SEAM / on water >=1 (PASS); suite green (PASS). The README note therefore
   stays "experimental and not yet calibrated".
+
+## Maintainer round 2 — step A6: severity score (2026-10-14)
+- `score` (count of fired checks) is unchanged; a new `severity` goes next to it so Part B's polish loop
+  has a number that decreases as a map improves. Formula, frozen with its unit tests before any benchmark
+  was linted:
+  `severity = 100 / (map width * height) * sum over the fired checks of (raw count - stratum threshold)`;
+  each fired check weighs 1, unfired checks add 0, and a threshold of 0 contributes the raw count itself
+  (never a division). So any map with `score:0` has `severity:0.0`.
+- Pure function `pk.maps.lint.severity_scores(counts, strata, stratum, area)`; `run` prints
+  `score:S severity:V.V (vanilla:B.B, +D.D)`. The snapshot now stores each vanilla map's `area`, `score`
+  and `severity` for delta mode; rebuilt with `pk map lint --snapshot`.
+- Unit tests (synthetic grids, no repo): `tests/test_maps.py::Lint.test_severity_formula` checks the
+  excesses, the zero-threshold case, a score-0 map and a skipped (None) check.
