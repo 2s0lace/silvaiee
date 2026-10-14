@@ -763,3 +763,17 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   **28 SEAM** and **27 RARE** items, equal to the summary's `seams:28 rare:27`. Full suite: **131 tests,
   0 failures** (697 s).
 
+
+## Round 2 A2 follow-up: PkLintSeam rebuilt, fixture-vs-Opus target dropped (owner, 2026-10-14)
+- **PkLintSeam_Frlg** no longer tested seams: its wall row (0x2E8) and flower row (0x2E1) were custom
+  metatiles without a socket, so A3 reported them `INFO UNCHECKED` and scored nothing. Both rows were
+  repainted with vanilla metatiles (`pk map paint PkLintSeam_Frlg 8,8,6x1 0x12B` and `8,13,6x1 0x2A3`):
+  a shoreless 6x2 pond and a 6x2 door strip on plain grass. Now
+  `seams:48 rare:16 score:2 severity:13.3`, no UNCHECKED lines (was seams:21 severity:6.0).
+- **Target change, approved by the owner:** A7's "every `PkLint*` fixture has a higher severity than Opus" is
+  dropped. Each fixture is a small map built to trip ONE check, so its severity is small by construction
+  (PkLintEmpty: one blank screen, 0.2). That compared fixtures with a full benchmark map, which says
+  nothing about lint quality. Fixtures keep the Part A target (score above the vanilla max). The benchmark
+  target stays: every map with human score <= 4 has severity > Opus (passes: Sonnet 9.7, Sol 16.7,
+  Muse 18.2, DeepSeek 29.8 vs Opus 8.2).
+- No threshold or formula changed. The README note stays "experimental" until the owner's tests.
