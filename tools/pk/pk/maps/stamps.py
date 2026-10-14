@@ -22,6 +22,8 @@ def layouts_for(repo, pair):
     for layout in repo.layouts().values():
         if (layout.get('primary_tileset'), layout.get('secondary_tileset')) != key:
             continue
+        if str(layout.get('id', '')).startswith('LAYOUT_PK_'):
+            continue        # Pk* drafts are never reference data, so mining ignores them
         w, h = layout['width'], layout['height']
         try:
             cells = decode(repo.read(layout['blockdata_filepath'])[:w * h * 2])

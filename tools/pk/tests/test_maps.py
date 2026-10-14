@@ -458,6 +458,83 @@ class Lint(unittest.TestCase):
         every = listing(self.repo, '', 0, 100000)
         self.assertEqual(len([r for r in every.data if r.startswith('PkPalletOpus_Frlg ')]), 1)
 
+    def test_patch_critic_is_leave_one_out_and_info_only(self):
+        # B1: the 3x3 window share is reported, but a vanilla map must not score 1.0 for free
+        # (its own windows are removed before scoring) and it must not change score/severity.
+        from pk.maps import lint
+        vanilla = lint.run(self.repo, 'PalletTown_Frlg').summary
+        patch = float(re.search(r'patch:([0-9.]+)', vanilla)[1])
+        self.assertLess(patch, 1.0)
+        self.assertIn('score:0', vanilla)
+        draft = lint.run(self.repo, 'PkPalletMuse_Frlg').summary
+        self.assertIsNotNone(re.search(r'patch:([0-9.]+)', draft))
+        self.assertIn('seams:69', draft)     # patch is reported, the critic is untouched
+
+
+class SeamRepair(MapTest):
+    def test_repair_fewer_seams_after_copy(self):
+        # B2: paste a 6x6 vanilla block onto a Pk* copy; --repair lowers the seam count.
+        from pk.maps import lint
+        seams = lambda: int(re.search(r'seams:(\d+)', lint.run(self.repo, 'PkSandbox2_Frlg').summary)[1])
+        self.map('copy', 'PkSandbox2_Frlg', '10,16,6x6', '2,4', **{'from': 'Route1_Frlg'})
+        before = seams()
+        tx2 = Transaction(Repo(ROOT), 'test2')
+        repo2 = Repo(ROOT, tx2)
+        edit.command(repo2, tx2, ['copy', 'PkSandbox2_Frlg', '10,16,6x6', '2,4'],
+                     {'from': 'Route1_Frlg', 'repair': True})
+        after = int(re.search(r'seams:(\d+)', lint.run(repo2, 'PkSandbox2_Frlg').summary)[1])
+        self.assertLess(after, before, (before, after))
+
+    def test_render_viewport_grid_and_compare(self):
+        # B6: viewport (15x10) and grid renders, and a side-by-side compare PNG.
+        png = b'\x89PNG\r\n\x1a\n'
+        vp = self.map('render', 'PalletTown_Frlg', viewport='4,4', out='.pk/render/t_vp.png')
+        self.assertIn('15x10', vp.summary)
+        self.assertTrue(self.tx.writes['.pk/render/t_vp.png'].startswith(png))
+        grid = self.map('render', 'PalletTown_Frlg', grid=True, out='.pk/render/t_grid.png')
+        self.assertIn('grid', grid.summary)
+        self.assertTrue(self.tx.writes['.pk/render/t_grid.png'].startswith(png))
+        cmp = self.map('render', 'PalletTown_Frlg', compare='PkPalletOpus_Frlg',
+                       scale='2', out='.pk/render/t_cmp.png')
+        self.assertIn('compare PalletTown_Frlg vs PkPalletOpus_Frlg', cmp.summary)
+        self.assertTrue(self.tx.writes['.pk/render/t_cmp.png'].startswith(png))
+
+
+class PolishTest(MapTest):
+    def test_polish_drops_severity_and_keeps_guards(self):
+        # B3: polishing into a copy roughly halves severity, changes <10% of the cells, leaves the
+        # frozen (event/structure/far) cells untouched, and never lets a material vanish.
+        from pk.maps import lint, polish, terrain
+        result = polish.command(self.repo, self.tx, 'PkPalletMuse_Frlg', {'into': 'PkTestPolish_Frlg'})
+        match = re.search(r'severity:([0-9.]+)->([0-9.]+)', result.summary)
+        before, after = float(match[1]), float(match[2])
+        self.assertLessEqual(after, before * 0.5, result.summary)
+        src, pair = edit.load(self.repo, 'PkPalletMuse_Frlg')
+        dst_cells = decode(self.tx.writes['data/layouts/PkTestPolish_Frlg/map.bin'])
+        dst = lambda x, y: dst_cells[y * src.w + x]
+        cfg = lint.thresholds(self.repo)
+        rules = terrain.Rules(self.repo, pair, include_pk=False)
+        warns = lint.measure(src, pair, cfg, lint.load_snapshot(self.repo), rules)[1]
+        work = set(polish.movable(src, pair, rules, polish.problem_boxes(warns), 2, src.data))
+        changed = 0
+        for y in range(src.h):
+            for x in range(src.w):
+                if src.at(x, y) != dst(x, y):
+                    changed += 1
+                    self.assertIn((x, y), work, f'{x},{y} outside the movable ring')
+        self.assertLessEqual(changed, src.w * src.h // 10)
+        def material_counts(get):
+            counts = {}
+            for y in range(src.h):
+                for x in range(src.w):
+                    m = rules.material(get(x, y))
+                    counts[m] = counts.get(m, 0) + 1
+            return counts
+        counts_src, counts_dst = material_counts(lambda x, y: src.at(x, y)), material_counts(dst)
+        for material, n in counts_src.items():
+            self.assertGreaterEqual(counts_dst.get(material, 0), 1, material)
+            self.assertLessEqual(abs(counts_dst.get(material, 0) - n), max(3, n * 0.05), material)
+
 
 if __name__ == '__main__':
     unittest.main()

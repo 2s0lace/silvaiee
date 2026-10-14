@@ -810,5 +810,35 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   `.pk/render/compare_<Model>.png`.
 - Test: `test_maps.SeamRepair.test_render_viewport_grid_and_compare`.
 
+## Round 2 B3: polish loop (2026-10-14)
+- `pk map polish MAP --into NEW_MAP [--max-steps 200] [--dry-run]` copies MAP and improves the copy with
+  the lint critic, zero tokens. Movable cells = within `ring` (2) of a WARN SEAM/RARE/STAIR/RECT/EMPTY,
+  minus event cells (and their 8 neighbours) and every door/warp/sign/window behaviour or solid
+  (building/roof/fence) cell. Each step picks the single cell change (a variant of the cell's material, or
+  a soft-material boundary shift: water/sand/grass/tall_grass/meadow/lawn/path/flowers/ground/tree) that
+  most lowers severity (SEAM + RARE); it is kept only if severity falls (or holds while patch rises),
+  reachability from every entrance never worsens, per material the count moves by at most max(3, 5%) and
+  no material vanishes, and at most 10% of the cells change. Scan order, candidate order and tie-breaks are
+  fixed, so the same input gives byte-identical output (verified: two runs produced identical map.bin).
+- Targets, measured after the run by an independent check (not the loop's own report):
+
+  | map | severity | seams | rare | cells changed |
+  |---|---|---|---|---|
+  | Muse | 18.2 -> 0.9 (-95%) | 69 -> 6 | 53 -> 0 | 41/67 |
+  | Sonnet | 9.7 -> 1.9 (-80%) | 40 -> 13 | 25 -> 0 | 21/67 |
+  | DeepSeek | 29.8 -> 1.6 (-95%) | 112 -> 11 | 88 -> 0 | 62/67 |
+  | Sol | 16.7 -> 0.4 (-98%) | 66 -> 3 | 46 -> 0 | 45/67 |
+
+  For each pair the independent check found 0 frozen cells broken, 0 material-guard breaches and 0
+  reachability regressions. Polish changes 0 cells on the 10 vanilla maps (PalletTown, Viridian, Pewter,
+  Cerulean, Vermilion, Route1, Route3, Route24, Route25, FourIsland).
+- `edit.usage` and `stamps.layouts_for` now skip `LAYOUT_PK_*` (Pk* drafts are never reference data); the
+  shipped `mined_pallettown_*` stamps were regenerated from vanilla-only mining so `stamp mine --apply`
+  is a no-op again.
+- Compare renders: `.pk/render/compare_Muse.png`, `compare_Sonnet.png`, `compare_DeepSeek.png`,
+  `compare_Sol.png`.
+- Test: `test_maps.PolishTest.test_polish_drops_severity_and_keeps_guards`.
+
+
 
 

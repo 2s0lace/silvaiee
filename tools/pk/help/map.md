@@ -15,8 +15,9 @@ Parse symbol=value from the right (counter symbol: ==0); split the header at "; 
 pk map lint MAP (read-only; thresholds in tools/pk/data/lint_map.json; 0 is clean)
  map lint is experimental and not yet calibrated on all vanilla maps.
  pk map lint --snapshot: the only writer of tools/pk/data/vanilla_adjacency.json; it freezes the
-  vanilla h/v/diagonal pair counts + known metatiles per tileset pair and re-measures the per-stratum
-  thresholds. SEAM/RARE read that snapshot, never live files, and skip with INFO when it is missing.
+  vanilla h/v/diagonal pair counts, the 3x3 metatile-window counts and known metatiles per tileset
+  pair and re-measures the per-stratum thresholds. SEAM/RARE/patch read that snapshot, never live
+  files, and skip with INFO when it is missing.
  RARE: a shore (water/sand) boundary whose metatile pair occurs <= rare_rate * layouts times in the snapshot.
  WARN SEAM h|v 0x123-0x2A3 @x,y: adjacent metatiles never seen in the vanilla snapshot of this pair.
   WARN SEAM for a custom metatile prints INFO UNCHECKED 0xNNN xK (no socket) unless it declares a
@@ -26,11 +27,23 @@ pk map lint MAP (read-only; thresholds in tools/pk/data/lint_map.json; 0 is clea
  WARN STAIR pair span dash:n: equal natural runs gapped on one line (towns/cities only; catches broken shore bands).
  WARN RECT material x,y-WxH fill%: a natural component (>=rect_min x rect_min) filling rect_fill of its bbox; tendrils are pruned and a border-pinned one is skipped only if >=rect_min cells sit on the border.
  WARN EMPTY x,y-WxH: a 15x10 interior window with <2 decor/event cells and material entropy below empty_entropy (towns/cities only).
- Summary: lint MAP stratum:S seams:N stairs:N rare:N rects:N empty:N score:S (vanilla:B, +D). A check
-  fires (and counts +1) only above the p95 of its stratum, or the max when the stratum has <20 maps.
+ Summary: lint MAP stratum:S seams:N stairs:N rare:N rects:N empty:N score:S (vanilla:B, +D)
+  patch:P. A check fires (and counts +1) only above the p95 of its stratum, or the max when the
+  stratum has <20 maps. patch is the share of the map's 3x3 windows seen in vanilla (its own windows
+  removed for a vanilla map); info only, it never changes score or severity.
   Each check prints at most max_lines WARN rows; when cut it prints "INFO SEAM +N more (use --all)".
  pk map lint MAP --all prints every WARN row of every fired check (the aiceus backend always uses it).
+pk map seam MAP x,y,WxH [--ring 2] (read-only re-solve of the band around the box against the seen)
+ vanilla adjacencies; the box interior and everything beyond the ring stay frozen. --repair on copy/
+ stamp place runs it on the pasted box. Fixes SEAM/RARE with few-cell edits.
+pk map polish MAP --into NEW_MAP [--max-steps 200] [--dry-run] (copy MAP, then improve it with the
+ critic, zero tokens). Only cells within 2 of a WARN, not under/next to an event and not a door/
+ building/roof/fence/sign may change; a change is kept only if severity falls, reachability never
+ worsens, no material vanishes and no material moves by more than max(3, 5%) cells, all within 10%
+ of the map. Reports steps, severity/patch/seams before->after, cells changed and guard blocks.
 pk map render MAP [--rect x,y,WxH] [--scale n] [--out path.png] (default .pk/render/MAP.png)
+ --viewport x,y: render the 15x10 screen at x,y (scale 3 default). --grid: draw the 15x10 screen grid.
+ --compare B: A and B side by side at the same scale, 1-tile gap (before/after review).
 pk map at MAP x,y -> metatile, name, collision, elevation, behavior, layer, tileset
 pk map paint MAP x,y[,WxH] METATILE [--coll n] [--elev n]
 pk map fill MAP x,y METATILE (flood fill of the same metatile, max 2000 cells)
