@@ -1,20 +1,24 @@
-"""pk map polish: copy MAP into NEW_MAP and improve it with the critic, zero tokens.
+"""pk map polish: copy MAP into NEW_MAP and improve it with the critic, zero tokens (round 2 B3b).
 
-The critic is `lint` (SEAM/RARE against the frozen vanilla snapshot); the move is a re-solve of one
-problem area. We only ever re-solve *problem cells*: cells within `ring` of a WARN SEAM/RARE/STAIR/
-RECT location, minus every event cell (and its 8 neighbours) and every door/building/roof/fence/sign
-metatile (tagged door, a door/warp/sign/window behaviour, or solid material). Everything else is
-frozen, so only a ring around a real problem may change.
+The sketch decides what may go where; the solver only picks the right variant.
 
-A step picks the single cell change (a metatile variant of the cell's material, or a fallback
-boundary shift to a neighbour's material) that most lowers the critic, and keeps it only if:
-  - severity falls (or stays equal while patch rises);
-  - reachability from every entrance never gets worse (reach.py);
-  - per material the cell count changes by at most max(3, 5%) and no material disappears;
-  - at most 10% of the map's cells change in total.
-A guard that rejects a move is recorded (and that exact change is never retried), so the report shows
-whether the guards bite. The scan order and tie-breaks are fixed, so the same input gives
-byte-identical output; no RNG, no LLM.
+* The critic is `lint` (SEAM/RARE against the frozen vanilla snapshot) and `patch` (3x3 windows seen in
+  vanilla). Both are edges of the same snapshot.
+* Only *problem cells* may change: cells within `ring` of a WARN SEAM/RARE/STAIR/RECT/EMPTY, minus every
+  event cell (and its 8 neighbours) and every door/warp/sign/window behaviour or solid (building/roof/
+  fence) cell. Everything else is frozen.
+* A cell may become a tile of its own **sketch material** (the material it had in the copy before any
+  move), or a tile from the **boundary vocabulary** of a material pair in its 3x3 sketch neighbourhood
+  (the metatiles vanilla uses where those materials meet). A candidate is dropped unless its material
+  already appears in the cell's 5x5 sketch area, so polish never introduces a class the sketch did not
+  have (no masonry, rocks, bushes, flowers or trees where there were none).
+* A change is kept only if severity falls (or holds while patch rises), `patch` does not fall over the
+  whole map nor within the 5x5 around the move, reachability from every entrance never worsens, per
+  material the count moves by at most max(3, 5%) and no material vanishes, and at most 10% of the cells
+  change. A guard that rejects a change is counted; that exact change is never retried.
+* A movable cell that still touches an unseen edge and has no allowed tile that removes it prints
+  `INFO NOFIT x,y` and is left unchanged. The candidate count per cell is reported (min/p50/max).
+* Scan order, candidate order and tie-breaks are fixed: the same input gives byte-identical output.
 """
 import re
 
@@ -28,10 +32,6 @@ from .tiles import Pair
 
 BUDGET_FRAC = 0.1      # at most this share of the map's cells may change in total
 FROZEN_PATTERN = re.compile(r'DOOR|WARP|SIGNPOST|WINDOW')
-# A boundary shift may only move between soft natural materials; cliffs/piers/benches etc. would
-# change the art direction (the owner judges the render), so they are never a cross-material target.
-SOFT_MATERIALS = {'water', 'sand', 'grass', 'tall_grass', 'meadow', 'lawn', 'path', 'flowers',
-                  'ground', 'tree'}
 
 
 def reach_sets(repo, name, grid, pair, data):
@@ -89,21 +89,66 @@ def movable(grid, pair, rules, boxes, ring, data):
 
 
 class Critic:
-    """Local delta of severity (SEAM + RARE, both thresholds 0) and the candidate sets."""
+    """Sketch-driven candidates and the local delta of severity (SEAM + RARE, thresholds 0)."""
 
     def __init__(self, grid, pair, cfg, snap, rules):
         self.grid, self.pair, self.rules = grid, pair, rules
         stats = snap.pair(pair)
-        self.known, self.h, self.v = stats.metatiles, stats.h, stats.v
+        self.known, self.h, self.v, self.vocab = stats.metatiles, stats.h, stats.v, stats.vocab
+        self.windows = stats.windows
         self.rare_mats = set(cfg['rare_mats'])
         self.limit = cfg['rare_rate'] * max(1, stats.layouts)
         self.sockets = {}
+        self.sketch = {(x, y): rules.material(grid.at(x, y))
+                       for y in range(grid.h) for x in range(grid.w)}
+        self.sketch_cell = {(x, y): grid.at(x, y) for y in range(grid.h) for x in range(grid.w)}
+        self.allowed = {}
 
     def socket(self, metatile):
         if metatile not in self.sockets:
             sock = (self.pair.info(metatile) or {}).get('socket')
             self.sockets[metatile] = int(sock) if sock is not None else metatile
         return self.sockets[metatile]
+
+    def material(self, metatile, x, y):
+        """The material a candidate metatile would have at (x,y): tag first, else class of the
+        sketch cell's collision (matches how Rules.by_mat was built)."""
+        tags = (self.pair.info(metatile) or {}).get('tags')
+        if tags:
+            return tags[0]
+        cell = self.sketch_cell[(x, y)]
+        return self.rules.material((metatile, cell[1], cell[2]))
+
+    def prepare(self, work):
+        """allowed[(x,y)] = metatiles the sketch permits at this cell (B3b restricted vocabulary)."""
+        for (x, y) in work:
+            own = self.sketch[(x, y)]
+            pairs3 = set()
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    a = self.sketch.get((x + dx, y + dy))
+                    if a is None:
+                        continue
+                    for dx2 in (-1, 0, 1):
+                        for dy2 in (-1, 0, 1):
+                            b = self.sketch.get((x + dx2, y + dy2))
+                            if b is not None and a < b:
+                                pairs3.add(f'{a}|{b}')
+            classes5 = {self.sketch[(x + dx, y + dy)] for dx in range(-2, 3) for dy in range(-2, 3)
+                        if (x + dx, y + dy) in self.sketch}
+            tiles = set(self.rules.by_mat.get(own, ()))
+            for pairkey in pairs3:
+                for metatile in self.vocab.get(pairkey, ()):
+                    if self.material(metatile, x, y) in classes5:
+                        tiles.add(metatile)
+            self.allowed[(x, y)] = sorted(tiles)
+
+    def candidate_counts(self, work):
+        sizes = sorted(len(self.allowed[p]) for p in work)
+        if not sizes:
+            return (0, 0, 0)
+        pick = lambda q: sizes[min(len(sizes) - 1, int(round(q * (len(sizes) - 1))))]
+        return sizes[0], pick(0.5), sizes[-1]
 
     def edge(self, a, b, table, mat_a, mat_b):
         sa, sb = self.socket(a), self.socket(b)
@@ -129,20 +174,44 @@ class Critic:
         return cost
 
     def options(self, x, y):
-        """[(metatile, material, delta)] for a cell: its own material first, then neighbour ones."""
-        grid, rules = self.grid, self.rules
-        cell = grid.at(x, y)
-        own = rules.material(cell)
+        """[(metatile, material, delta)] the sketch allows at this cell."""
+        cell = self.grid.at(x, y)
+        own = self.rules.material(cell)
         base = self.local(x, y, own, cell[0])
-        neighbours = {rules.material(grid.at(nx, ny))
-                      for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)) if grid.inside(nx, ny)}
         out = []
-        for material in sorted({own} | (neighbours & SOFT_MATERIALS)):
-            for metatile in sorted(rules.by_mat.get(material, ())):
-                if metatile == cell[0]:
-                    continue
-                out.append((metatile, material, self.local(x, y, material, metatile) - base))
-        return out
+        for metatile in self.allowed.get((x, y), ()):
+            if metatile == cell[0]:
+                continue
+            material = self.material(metatile, x, y)
+            out.append((metatile, material, self.local(x, y, material, metatile) - base))
+        return out, base
+
+    def has_unseen(self, x, y):
+        cell = self.grid.at(x, y)
+        mat = self.rules.material(cell)
+        for (nx, ny), table, first in (((x - 1, y), self.h, True), ((x + 1, y), self.h, False),
+                                       ((x, y - 1), self.v, True), ((x, y + 1), self.v, False)):
+            if self.grid.inside(nx, ny):
+                neighbour = self.grid.at(nx, ny)
+                nm = self.rules.material(neighbour)
+                if (self.edge(neighbour[0], cell[0], table, nm, mat) if first
+                        else self.edge(cell[0], neighbour[0], table, mat, nm)):
+                    return True
+        return False
+
+
+def local_seen(critic, x, y):
+    """Seen count of the 3x3 windows fully inside the 5x5 around (x,y): the local patch metric."""
+    grid = critic.grid
+    seen = 0
+    for ty in range(y - 2, y + 1):
+        for tx in range(x - 2, x + 1):
+            if tx < 0 or ty < 0 or tx + 2 >= grid.w or ty + 2 >= grid.h:
+                continue
+            key = lint.window_key([critic.socket(grid.at(tx + dx, ty + dy)[0])
+                                   for dy in range(3) for dx in range(3)])
+            seen += 1 if critic.windows.get(key, 0) > 0 else 0
+    return seen
 
 
 def command(repo, tx, query, opts):
@@ -190,40 +259,45 @@ def command(repo, tx, query, opts):
     reach0 = reach_sets(repo, name, grid, pair, data)
 
     critic = Critic(grid, pair, cfg, snap, rules)
-    severity, counts, patch, changed = severity0, counts0, patch0, 0
+    critic.prepare(work)
+    cand = critic.candidate_counts(work)
+
+    severity, changed = severity0, 0
     steps = kept = 0
-    blocked = {'severity': 0, 'reachability': 0, 'materials': 0, 'edits': 0}
+    blocked = {'severity': 0, 'patch': 0, 'reachability': 0, 'materials': 0, 'edits': 0}
     banned = set()
     while kept < max_steps and changed < budget:
         steps += 1
         best = None
         for (x, y) in work:
             own = rules.material(grid.at(x, y))
-            for metatile, material, delta in critic.options(x, y):
-                if (x, y, metatile) in banned:
+            options, _base = critic.options(x, y)
+            for metatile, material, delta in options:
+                if delta >= 0 or (x, y, metatile) in banned:
+                    continue
+                if best is not None and (delta, x, y, metatile) >= best[:4]:
                     continue
                 if material != own and (material_now.get(material, 0) + 1 > material_max.get(material, 0)
                                         or material_now.get(own, 0) - 1 < material_min.get(own, 1)):
                     blocked['materials'] += 1
-                    continue        # a boundary shift would break the per-material guard
-                if best is None or (delta, x, y, metatile) < best:
-                    best = (delta, x, y, metatile, own, material)
-        if best is None or best[0] >= 0:
+                    continue
+                old = grid.at(x, y)
+                before = local_seen(critic, x, y)
+                grid.set(x, y, terrain.bits_for(repo, pair, rules, metatile, material, old))
+                after = local_seen(critic, x, y)
+                grid.set(x, y, old)
+                if after < before:
+                    blocked['patch'] += 1        # the 5x5 patch (and so the whole-map patch) would drop
+                    continue
+                best = (delta, x, y, metatile, own, material)
+        if best is None:
             break
         delta, x, y, metatile, own, material = best
         old = grid.at(x, y)
         grid.set(x, y, terrain.bits_for(repo, pair, rules, metatile, material, old))
-        new_severity, new_counts, _, new_patch = measure()
-        if new_severity > severity + 1e-9 or (new_severity == severity and new_patch <= patch):
-            if new_severity > severity + 1e-9:
-                blocked['severity'] += 1
-            banned.add((x, y, metatile))
-            grid.set(x, y, old)
-            continue
         new_reach = reach_sets(repo, name, grid, pair, data)
         worse = any(not (new_reach[k] >= reach0[k]) for k in reach0)
-        new_changed = changed + 1
-        if worse or new_changed > budget:
+        if worse or changed + 1 > budget:
             blocked['reachability' if worse else 'edits'] += 1
             banned.add((x, y, metatile))
             grid.set(x, y, old)
@@ -231,16 +305,23 @@ def command(repo, tx, query, opts):
         if material != own:
             material_now[own] -= 1
             material_now[material] = material_now.get(material, 0) + 1
-        severity, counts, patch = new_severity, new_counts, new_patch
+        severity += delta
         reach0 = new_reach
-        changed = new_changed
+        changed += 1
         kept += 1
+    severity, counts, _, patch = measure()
+    # NOFIT: a cell that still touches an unseen edge but has no allowed tile that removes it.
+    nofit = [p for p in work if critic.has_unseen(*p) and
+             all(delta >= 0 for _m, _mat, delta in critic.options(*p)[0])]
     if changed:
         tx.stage(layout['blockdata_filepath'], encode(grid.cells))
-    rows = [f'guard {k}: {v}' for k, v in blocked.items() if v] or ['no guard blocked a move']
-    rows.append(f'next: pk map render {source_name} --compare {new_name} --scale 2 --out .pk/render/compare.png')
+    rows = [f'candidates min/p50/max {cand[0]}/{cand[1]}/{cand[2]} over {len(work)} movable',
+            f'NOFIT {len(nofit)}' + (': ' + ' '.join(f'{x},{y}' for x, y in nofit[:12])
+                                     + (' ...' if len(nofit) > 12 else '') if nofit else '')]
+    rows += [f'guard {k}: {v}' for k, v in blocked.items() if v] or ['no guard blocked a kept move']
+    rows.append(f'next: pk map render {source_name} --compare {new_name} --scale 2 '
+                f'--out .pk/render/compare_{new_name.replace("PkPallet", "").replace("_Frlg", "")}_b3b.png')
     return Result(
         f'polish {new_name} <- {source_name} steps:{kept}/{steps} severity:{severity0:.1f}->{severity:.1f} '
         f'patch:{patch0:.2f}->{patch:.2f} seams:{counts0["seams"]}->{counts["seams"]} '
-        f'rare:{counts0["rare"]}->{counts["rare"]} cells:{changed}/{budget} of {len(work)} movable',
-        rows)
+        f'rare:{counts0["rare"]}->{counts["rare"]} cells:{changed}/{budget}', rows)

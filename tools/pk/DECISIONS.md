@@ -839,6 +839,36 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   `compare_Sol.png`.
 - Test: `test_maps.PolishTest.test_polish_drops_severity_and_keeps_guards`.
 
+## Round 2 B3b: polish without cheating (restricted vocabulary + patch guard) (2026-10-14)
+- The owner/reviewer judged the B3 polished maps worse: the loop fixed seams with tiles that fit next to
+  almost anything in vanilla (grey harbour wall/masonry, cracked rocks, round bushes). Lint saw no seam but
+  `patch` dropped; the loop ignored `patch`.
+- The snapshot (v3, ~13.8 MB) now also stores the **boundary vocabulary**: for each material pair (A,B),
+  the metatiles vanilla uses on cells whose 3x3 neighbourhood contains both A and B. A polish cell may
+  become a tile of its own **sketch material** or a tile from the vocabulary of a material pair in its 3x3
+  sketch neighbourhood, and only if that metatile's class already appears in the cell's 5x5 sketch area.
+  This removes the cheat: no wall/rock/bush/flower/tree class the sketch did not have.
+- `patch` is now a guard: a move is kept only if severity falls AND `patch` does not fall (the local 5x5
+  patch, which for a single cell is the only part that can change, so whole-map patch cannot drop either).
+  The loop reports candidate counts (min/p50/max) and `INFO NOFIT x,y` for a movable cell that still touches
+  an unseen edge but has no allowed tile that removes it. Shape moves (soft-material boundary shifts) stay;
+  the ±max(3, 5%) material cap stays.
+- Rerun into the same copies (old ones `pk undo`-ed first), measured after the run:
+
+  | map | severity | patch | seams | rare | cells | NOFIT |
+  |---|---|---|---|---|---|---|
+  | Muse | 18.2 -> 3.6 (-80%) | 0.78 -> 0.79 | 69 -> 17 | 53 -> 7 | 33/67 | 20 |
+  | Sonnet | 9.7 -> 5.5 (-43%) | 0.85 -> 0.85 | 40 -> 26 | 25 -> 11 | 8/67 | 35 |
+  | DeepSeek | 29.8 -> 4.5 (-85%) | 0.72 -> 0.72 | 112 -> 22 | 88 -> 8 | 56/67 | 18 |
+  | Sol | 16.7 -> 4.8 (-71%) | 0.76 -> 0.76 | 66 -> 19 | 46 -> 13 | 32/67 | 9 |
+
+- New-class check (separate script over `rules.material` per cell): **empty on all four** (only new
+  variants within classes the sketch already had). Independent guard recheck: 0 frozen broken, 0 material
+  breach, 0 reach regression; 0 cells on the 10 vanilla maps; two runs byte-identical.
+- Compare renders: `.pk/render/compare_Muse_b3b.png`, `compare_Sonnet_b3b.png`, `compare_DeepSeek_b3b.png`,
+  `compare_Sol_b3b.png`. Full suite: 135 tests, 0 failures.
+
+
 
 
 

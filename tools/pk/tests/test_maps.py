@@ -531,6 +531,8 @@ class PolishTest(MapTest):
                     counts[m] = counts.get(m, 0) + 1
             return counts
         counts_src, counts_dst = material_counts(lambda x, y: src.at(x, y)), material_counts(dst)
+        self.assertEqual(set(counts_dst) - set(counts_src), set(),
+                         'B3b: polish must not introduce a metatile class the sketch did not have')
         for material, n in counts_src.items():
             self.assertGreaterEqual(counts_dst.get(material, 0), 1, material)
             self.assertLessEqual(abs(counts_dst.get(material, 0) - n), max(3, n * 0.05), material)

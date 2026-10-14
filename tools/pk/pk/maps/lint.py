@@ -16,12 +16,13 @@ from ..core.errors import PkError
 from ..core.out import Result
 from .edit import load
 from .grid import decode
-from .layers import events
+from .layers import class_of, events
 from .terrain import Rules
+from .tiles import Pair
 
 LINT_JSON = 'tools/pk/data/lint_map.json'
 SNAPSHOT_JSON = 'tools/pk/data/vanilla_adjacency.json'
-SNAPSHOT_VERSION = 2      # v2 adds the 3x3 window counts ("patch" critic)
+SNAPSHOT_VERSION = 3      # v3 adds the boundary vocabulary (material pairs -> vanilla boundary tiles)
 PK_LAYOUT = 'LAYOUT_PK_'
 
 CHECKS = [('natural', list), ('decor_tags', list), ('stair_min_steps', int), ('stair_min_run', int),
@@ -99,6 +100,14 @@ def socket_of(pair, mt):
     return int(sock) if sock is not None else mt
 
 
+def material_of(pair, metatile, collision):
+    """The material a metatile belongs to: its first tag, else its behaviour class (Rules.material)."""
+    tags = (pair.info(metatile) or {}).get('tags')
+    if tags:
+        return tags[0]
+    return class_of(pair, metatile, collision)[1]
+
+
 def window_key(ids):
     """Pack one 3x3 window (9 metatile ids, each < 4096) into a hex string for the snapshot."""
     value = 0
@@ -155,6 +164,7 @@ class PairStats:
         self.h = {tuple(int(v) for v in k.split(',')): c for k, c in data['h'].items()}
         self.v = {tuple(int(v) for v in k.split(',')): c for k, c in data['v'].items()}
         self.windows = data.get('w') or {}      # 3x3 window key -> number of distinct vanilla layouts
+        self.vocab = data.get('vocab') or {}    # "A|B" material pair -> [metatiles vanilla uses there]
 
 
 class Snap:
@@ -546,6 +556,7 @@ def stats(values):
 def build_pairs(repo):
     """h/v/diagonal pair counts + known metatile ids per tileset pair, from vanilla layouts only."""
     pairs = {}
+    pair_cache = {}
     for lid, layout in repo.layouts().items():
         if lid.startswith(PK_LAYOUT):
             continue
@@ -556,9 +567,19 @@ def build_pairs(repo):
         except PkError:
             continue
         entry = pairs.setdefault(key, dict(layouts=0, metatiles=set(),
-                                           h={}, v={}, ne={}, nw={}, se={}, sw={}, w={}))
+                                           h={}, v={}, ne={}, nw={}, se={}, sw={}, w={}, vocab={}))
         entry['layouts'] += 1
+        pair = None
+        if isinstance(layout.get('primary_tileset'), str) and isinstance(layout.get('secondary_tileset'), str):
+            if key not in pair_cache:
+                try:
+                    pair_cache[key] = Pair(repo, layout)
+                except PkError:
+                    pair_cache[key] = None    # a layout whose secondary is "0" or unregistered
+            pair = pair_cache[key]
         layout_windows = set()
+        material = ({(x, y): material_of(pair, cells[y * w + x][0], cells[y * w + x][1])
+                     for y in range(h) for x in range(w)} if pair is not None else {})
         for y in range(h):
             for x in range(w):
                 a = cells[y * w + x][0]
@@ -581,6 +602,15 @@ def build_pairs(repo):
                 if x > 0 and y + 1 < h:
                     k = f'{a},{cells[(y + 1) * w + x - 1][0]}'
                     entry['sw'][k] = entry['sw'].get(k, 0) + 1
+                # Boundary vocabulary: this cell's metatile is what vanilla uses at a spot whose
+                # 3x3 neighbourhood contains this pair of materials.
+                if pair is not None:
+                    neigh = {material[(x + dx, y + dy)] for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                             if 0 <= x + dx < w and 0 <= y + dy < h}
+                    for first in neigh:
+                        for second in neigh:
+                            if first < second:
+                                entry['vocab'].setdefault(f'{first}|{second}', set()).add(a)
         # 3x3 windows counted once per distinct layout, so leave-one-out can subtract one map.
         for y in range(h - 2):
             for x in range(w - 2):
@@ -590,6 +620,7 @@ def build_pairs(repo):
             entry['w'][k] = entry['w'].get(k, 0) + 1
     for entry in pairs.values():
         entry['metatiles'] = sorted(entry['metatiles'])
+        entry['vocab'] = {k: sorted(v) for k, v in entry['vocab'].items()}
     return pairs
 
 

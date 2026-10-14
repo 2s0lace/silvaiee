@@ -37,10 +37,15 @@ pk map seam MAP x,y,WxH [--ring 2] (read-only re-solve of the band around the bo
  vanilla adjacencies; the box interior and everything beyond the ring stay frozen. --repair on copy/
  stamp place runs it on the pasted box. Fixes SEAM/RARE with few-cell edits.
 pk map polish MAP --into NEW_MAP [--max-steps 200] [--dry-run] (copy MAP, then improve it with the
- critic, zero tokens). Only cells within 2 of a WARN, not under/next to an event and not a door/
- building/roof/fence/sign may change; a change is kept only if severity falls, reachability never
- worsens, no material vanishes and no material moves by more than max(3, 5%) cells, all within 10%
- of the map. Reports steps, severity/patch/seams before->after, cells changed and guard blocks.
+ critic, zero tokens). The sketch decides what may go where: a cell may become a tile of its own sketch
+ material or a tile from the boundary vocabulary of a material pair in its 3x3 sketch neighbourhood (the
+ vanilla metatiles used where those materials meet), but only if that metatile's class already appears in
+ the cell's 5x5 sketch area - no new walls, rocks, bushes, flowers or trees. Only cells within 2 of a WARN,
+ not under/next to an event and not a door/building/roof/fence/sign, may change. A change is kept only if
+ severity falls, `patch` does not fall (whole map and the 5x5 around the move), reachability never
+ worsens, no material vanishes and no material moves by more than max(3, 5%) cells, all within 10% of the
+ map. Reports candidate count min/p50/max, NOFIT cells (no allowed tile removes the seam), steps,
+ severity/patch/seams before->after, cells changed and guard blocks.
 pk map render MAP [--rect x,y,WxH] [--scale n] [--out path.png] (default .pk/render/MAP.png)
  --viewport x,y: render the 15x10 screen at x,y (scale 3 default). --grid: draw the 15x10 screen grid.
  --compare B: A and B side by side at the same scale, 1-tile gap (before/after review).
