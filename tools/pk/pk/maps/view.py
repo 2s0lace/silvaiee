@@ -8,8 +8,11 @@ def listing(repo, query='', offset=0, limit=20):
         if query.casefold() not in (name+' '+data['id']+' '+data['layout']).casefold():
             continue
         layout = layouts[data['layout']]
-        rows.append(f"{name} {layout['width']}x{layout['height']} {layout['primary_tileset']}/{layout['secondary_tileset']}")
-    return page(f'maps {len(rows)}', rows, offset, limit)
+        layout_dir = layout['blockdata_filepath'].rsplit('/', 1)[0]
+        rows.append(f"{name} {layout['width']}x{layout['height']} "
+                    f"{layout['primary_tileset']}/{layout['secondary_tileset']} "
+                    f"{data.get('map_type', '')} {layout_dir}")
+    return page(f'maps {len(rows)}', rows, offset, limit, maximum=100000)
 
 
 def info(repo, query, offset=0, limit=6):

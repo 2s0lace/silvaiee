@@ -23,6 +23,8 @@ from pk.maps import paintover as map_paintover, export as map_export
 from pk.art import ops as art_ops
 from pk.bp import ops as bp_ops
 
+MAP_LS_ALL = 100000    # pk map ls --all: no realistic repo has more than this many maps
+
 
 def options(argv, values=(), flags=()):
     args, opts = [], {}
@@ -88,7 +90,8 @@ def dispatch(repo, tx, argv):
         args, opts = options(tail, values=('offset', 'limit', 'rect', 'layer', 'from', 'coll', 'elev', 'add', 'to',
                                            'anchor', 'fill', 'size', 'tilesets', 'type', 'like', 'music', 'group', 'out', 'scale',
                                            'into'),
-                             flags=('exact', 'no-events', 'fork-layout', 'drop-out-of-bounds', 'stamps', 'snapshot'))
+                             flags=('exact', 'no-events', 'fork-layout', 'drop-out-of-bounds', 'stamps', 'snapshot',
+                                    'all'))
         if args and args[0] == 'paintover' and len(args) == 3:
             result = map_paintover.command(repo, tx, args, opts)
         elif args and args[0] == 'resize' and len(args) == 2:
@@ -98,14 +101,17 @@ def dispatch(repo, tx, argv):
         elif args and args[0] == 'new' and len(args) == 2:
             result = map_create.new_map(repo, tx, args[1], opts)
         elif args and args[0] == 'ls' and len(args) <= 2:
-            result = listing(repo, args[1] if len(args) == 2 else '', *pagination(opts))
+            offset, limit = pagination(opts)
+            if opts.get('all'):
+                offset, limit = 0, MAP_LS_ALL
+            result = listing(repo, args[1] if len(args) == 2 else '', offset, limit)
         elif args and args[0] == 'lint':
             if opts.get('snapshot') and len(args) == 1:
                 result = map_lint.build_snapshot(repo, tx)
             elif len(args) == 2:
-                result = map_lint.run(repo, args[1])
+                result = map_lint.run(repo, args[1], show_all=opts.get('all', False))
             else:
-                raise PkError('PARSE', 'usage: pk map lint MAP | pk map lint --snapshot')
+                raise PkError('PARSE', 'usage: pk map lint MAP [--all] | pk map lint --snapshot')
         elif args and args[0] == 'export' and len(args) == 2:
             result = map_export.export_map(repo, tx, args[1], opts)
         elif args and args[0] == 'import' and len(args) == 3:

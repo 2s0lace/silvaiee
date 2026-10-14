@@ -730,3 +730,16 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   is **-0.505** (worse maps have higher severity), driven by DeepSeek (most novel shore pairs) ranking
   worst while humans rated it mid-pack.
 - Because a target missed, README "Known issues" and `help/map.md` keep the "experimental" wording.
+
+## aiceus step 0: lint stops hiding rows; map ls carries type and layout dir (2026-10-14)
+- `pk map lint MAP` capped each check at max_lines (12) and said nothing about the rest: on
+  `PkPalletOpus_Frlg` the summary said `seams:28 rare:27` but only 24 WARN rows were printed and `more`
+  was null. Each cut check now prints `INFO SEAM +16 more (use --all)` beside its rows, and the new
+  `pk map lint MAP --all` prints every row, so `--all` SEAM/RARE rows equal the summary counts (28/27).
+  `help/map.md` documents both. The aiceus server always calls lint with `--all`.
+- `pk map ls` rows now end with `MAP_TYPE layout_dir`, and `--all` returns every match in one call
+  (cap raised to 100000 for that query). The aiceus catalog needs name/type/w/h and the layout directory
+  (for the render cache) in one read, and the server may not read map.json to find the layout.
+- Tests: `test_maps.Lint.test_lint_cut_reports_more_and_all_prints_every_line` and
+  `test_maps.Lint.test_map_ls_has_type_and_layout_dir`.
+

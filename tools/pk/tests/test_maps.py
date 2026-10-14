@@ -431,6 +431,33 @@ class Lint(unittest.TestCase):
         for name in best:
             self.assertGreater(score(name), 0, name)
 
+    def test_lint_cut_reports_more_and_all_prints_every_line(self):
+        # Step 0: a cut check must say so instead of hiding rows; --all prints every WARN row,
+        # so GET /api/map/NAME can return as many SEAM items as the summary's seams: count.
+        from pk.maps import lint
+        cap = json.loads((ROOT/'tools/pk/data/lint_map.json').read_text(encoding='utf-8'))['max_lines']
+        capped = lint.run(self.repo, 'PkPalletOpus_Frlg')
+        seams = int(re.search(r'seams:(\d+)', capped.summary)[1])
+        rare = int(re.search(r'rare:(\d+)', capped.summary)[1])
+        self.assertGreater(seams, cap)
+        self.assertEqual(len([l for l in capped.data if l.startswith('WARN SEAM')]), cap)
+        self.assertIn(f'INFO SEAM +{seams - cap} more (use --all)', capped.data)
+        self.assertIn(f'INFO RARE +{rare - cap} more (use --all)', capped.data)
+        full = lint.run(self.repo, 'PkPalletOpus_Frlg', show_all=True)
+        self.assertEqual(len([l for l in full.data if l.startswith('WARN SEAM')]), seams)
+        self.assertEqual(len([l for l in full.data if l.startswith('WARN RARE')]), rare)
+        self.assertFalse(any('more (use --all)' in l for l in full.data))
+
+    def test_map_ls_has_type_and_layout_dir(self):
+        # The aiceus catalog needs the map type and the layout directory from one listing call.
+        from pk.maps.view import listing
+        row = listing(self.repo, 'PalletTown_Frlg', 0, 20).data[0]
+        name, size, tilesets, map_type, layout_dir = row.split(' ')
+        self.assertEqual((name, size, map_type), ('PalletTown_Frlg', '24x20', 'MAP_TYPE_TOWN'))
+        self.assertEqual(layout_dir, 'data/layouts/PalletTown_Frlg')
+        every = listing(self.repo, '', 0, 100000)
+        self.assertEqual(len([r for r in every.data if r.startswith('PkPalletOpus_Frlg ')]), 1)
+
 
 if __name__ == '__main__':
     unittest.main()

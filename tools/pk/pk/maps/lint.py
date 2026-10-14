@@ -438,23 +438,31 @@ def analyze(repo, query, cfg, snap, pair_rules_fn=pair_rules):
     return grid, pair, counts, warns, unchecked
 
 
-def run(repo, query):
+def run(repo, query, show_all=False):
     cfg = thresholds(repo)
     snap = load_snapshot(repo)
     grid, pair, counts, warns, unchecked = analyze(repo, query, cfg, snap)
     stratum = stratum_of(grid.data.get('map_type'))
     score, severity = severity_scores(counts, cfg['strata'], stratum, grid.w * grid.h)
     cap = cfg['max_lines']
-    rows = []
-    for metric in ('seams', 'stairs', 'rare', 'rects', 'empty'):
+    rows, cut = [], []
+    for metric, check in (('seams', 'SEAM'), ('stairs', 'STAIR'), ('rare', 'RARE'),
+                          ('rects', 'RECT'), ('empty', 'EMPTY')):
         value = counts.get(metric)
         threshold = metric_threshold(cfg['strata'], stratum, metric)
         if value is not None and threshold is not None and value > threshold:
-            rows += sorted(warns[metric])[:cap]
+            lines = sorted(warns[metric])
+            if show_all:
+                rows += lines
+            else:
+                rows += lines[:cap]
+                if len(lines) > cap:
+                    cut.append(f'INFO {check} +{len(lines) - cap} more (use --all)')
     infos = []
     if counts['seams'] is None or counts['rare'] is None:
         infos.append('INFO no snapshot; run pk map lint --snapshot')
     infos += [f'INFO UNCHECKED 0x{rid:03X} x{n} (no socket)' for rid, n in sorted(unchecked.items())]
+    infos += cut
     header = (f'lint {grid.name} stratum:{stratum} '
               + ' '.join(f'{m}:{"-" if counts[m] is None else counts[m]}' for m in counts))
     delta = ''

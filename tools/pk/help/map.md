@@ -1,4 +1,5 @@
-pk map ls [filter] | pk map info MAP
+pk map ls [filter] [--all] | pk map info MAP
+ Rows are "name WxH primary/secondary MAP_TYPE layout_dir" (20 per page; --all lists every match).
 pk map show MAP [--rect x,y,WxH] [--layer class|exact|coll|elev|all] [--exact] [--no-events] [--stamps]
 Class view symbols: . ground # solid " grass ~ water : sand v ^ < > ledges D door | waterfall = counter * ice
 Named metatiles with --sym override their class symbol. Maps wider than 64 are shown in bands.
@@ -27,6 +28,8 @@ pk map lint MAP (read-only; thresholds in tools/pk/data/lint_map.json; 0 is clea
  WARN EMPTY x,y-WxH: a 15x10 interior window with <2 decor/event cells and material entropy below empty_entropy (towns/cities only).
  Summary: lint MAP stratum:S seams:N stairs:N rare:N rects:N empty:N score:S (vanilla:B, +D). A check
   fires (and counts +1) only above the p95 of its stratum, or the max when the stratum has <20 maps.
+  Each check prints at most max_lines WARN rows; when cut it prints "INFO SEAM +N more (use --all)".
+ pk map lint MAP --all prints every WARN row of every fired check (the aiceus backend always uses it).
 pk map render MAP [--rect x,y,WxH] [--scale n] [--out path.png] (default .pk/render/MAP.png)
 pk map at MAP x,y -> metatile, name, collision, elevation, behavior, layer, tileset
 pk map paint MAP x,y[,WxH] METATILE [--coll n] [--elev n]
