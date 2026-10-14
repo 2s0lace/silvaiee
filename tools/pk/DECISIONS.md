@@ -746,7 +746,8 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 ## aiceus backend v1 (read-only) (2026-10-14)
 - `aiceus/server.py` (Python stdlib only) listens on 127.0.0.1 (default 8765) and answers every request
   by running `python tools/pk/pk.py ... --json`; it never reads map.bin/map.json/scripts.inc, and it
-  follows `MORE n` / `--offset`. Routes: `/` (index.html, else a one-line placeholder), `/api/maps`,
+  follows `MORE n` / `--offset` (stopping if a command would not advance). Routes: `/` (index.html, else
+  a one-line placeholder), `/api/maps`,
   `/api/map/NAME`, `/api/render/NAME.png?scale=1..4`, `/api/tickets`, `POST /api/ticket`. Failures are
   `{"ok":false,"error":"CODE message"}` with 400/404/500.
 - `/api/maps` is outdoor FRLG maps (`*_Frlg` + town/city/route/ocean) plus `Pk*`, built from one

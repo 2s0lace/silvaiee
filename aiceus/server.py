@@ -71,9 +71,10 @@ def run_pk_pages(cfg, args):
     doc, rows, offset = run_pk(cfg, args), [], None
     while True:
         rows += doc.get('data') or []
-        offset = doc.get('more')
-        if offset is None:
+        more = doc.get('more')
+        if more is None or more == offset:      # guard a command that would ignore --offset
             return doc, rows
+        offset = more
         doc = run_pk(cfg, [*args, '--offset', str(offset)])
 
 
