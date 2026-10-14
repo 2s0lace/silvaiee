@@ -8,6 +8,7 @@ ponds, staircase shores, unseen seams, empty screens, and the weaker PkPallet be
 scores above the clean vanilla maps (test_maps.Lint.test_ugly_scores_above_vanilla).
 """
 import json
+import math
 
 from ..core.errors import PkError
 from ..core.out import Result
@@ -23,7 +24,8 @@ CHECKS = [('natural', list), ('decor_tags', list), ('stair_min_steps', int), ('s
           ('rare_mats', list), ('rare_max', int),
           ('rect_min', int), ('rect_fill', (int, float)), ('rect_border', bool),
           ('empty_w', int), ('empty_h', int), ('empty_margin', int), ('empty_types', list),
-          ('empty_solid', bool), ('empty_water_frac', (int, float)), ('max_lines', int)]
+          ('empty_solid', bool), ('empty_water_frac', (int, float)), ('empty_entropy', (int, float)),
+          ('max_lines', int)]
 
 
 def pair_rules(repo, pair):
@@ -112,10 +114,10 @@ def stairs(meta, grid, cfg):
             taken = set()
             for start_line in sorted(by_line):
                 for first in sorted(by_line[start_line]):
-                    if (start_line,) + first in taken:
+                    if (start_line, first) in taken:
                         continue
                     length = first[1] - first[0] + 1
-                    for shift in (1, -1, length, -length):
+                    for shift in dict.fromkeys((1, -1, length, -length)):
                         chain = [(start_line, first)]
                         line, run = start_line, first
                         while line + 1 in by_line:
@@ -185,6 +187,19 @@ def rare(meta, grid, cfg):
     return rows, counted
 
 
+def prune_tendrils(comp, mat, material):
+    """Drop cells with fewer than 2 same-material 4-neighbours, repeatedly, so a 1-tile stream
+    hanging off a square pond no longer drags the pond's bounding box to the map border."""
+    comp = set(comp)
+    while comp:
+        remove = {(x, y) for (x, y) in comp
+                  if sum(1 for n in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)) if n in comp) < 2}
+        if not remove:
+            return comp
+        comp -= remove
+    return comp
+
+
 def rects(meta, grid, cfg):
     natural = set(meta['natural'])
     mat = meta['mat']
@@ -202,16 +217,30 @@ def rects(meta, grid, cfg):
                         seen.add((nx, ny))
                         comp.add((nx, ny))
                         frontier.append((nx, ny))
-            x1, y1 = max(x for x, _ in comp), max(y for _, y in comp)
-            xa, ya = min(x for x, _ in comp), min(y for _, y in comp)
-            w, h = x1 - xa + 1, y1 - ya + 1
-            if w < cfg['rect_min'] or h < cfg['rect_min'] or len(comp) < cfg['rect_fill'] * w * h:
+            core = prune_tendrils(comp, mat, material)
+            if not core:
                 continue
-            if cfg['rect_border'] and (xa == 0 or ya == 0 or x1 == grid.w - 1 or y1 == grid.h - 1):
-                continue    # rectangles pinned to the border can be vanilla shorelines/forest edges
-            rows.append(f'WARN RECT {material} {xa},{ya}-{x1},{y1} {round(len(comp) / (w * h) * 100)}%')
+            x1, y1 = max(x for x, _ in core), max(y for _, y in core)
+            xa, ya = min(x for x, _ in core), min(y for _, y in core)
+            w, h = x1 - xa + 1, y1 - ya + 1
+            if w < cfg['rect_min'] or h < cfg['rect_min'] or len(core) < cfg['rect_fill'] * w * h:
+                continue
+            border = sum(1 for (x, y) in core
+                         if x == 0 or y == 0 or x == grid.w - 1 or y == grid.h - 1)
+            if cfg['rect_border'] and border >= cfg['rect_min']:
+                continue    # a component pinned to the border can be a vanilla shoreline/forest edge
+            rows.append(f'WARN RECT {material} {xa},{ya}-{x1},{y1} {round(len(core) / (w * h) * 100)}%')
             counted += 1
     return rows, counted
+
+
+def material_entropy(mat, window):
+    """Shannon entropy (bits) of the material distribution of one window."""
+    counts = {}
+    for cell in window:
+        counts[mat[cell]] = counts.get(mat[cell], 0) + 1
+    n = len(window)
+    return -sum((c / n) * math.log2(c / n) for c in counts.values())
 
 
 def empty(meta, grid, pair, cfg):
@@ -229,13 +258,15 @@ def empty(meta, grid, pair, cfg):
     for y0 in range(margin, grid.h - h - margin + 1):
         for x0 in range(margin, grid.w - w - margin + 1):
             window = {(x, y) for y in range(y0, y0 + h) for x in range(x0, x0 + w)}
-            if window & decorated or window & taken:
-                continue
+            if len(window & decorated) >= 2 or window & taken:
+                continue    # two decorations (or an event pair) are enough to rescue a screen
             if meta['empty_solid'] and any(meta['mat'][(x, y)] == 'solid' for (x, y) in window):
                 continue
             water = len([1 for (x, y) in window if meta['mat'][(x, y)] == 'water'])
             if water > meta['empty_water_frac'] * w * h:
                 continue
+            if material_entropy(meta['mat'], window) >= meta['empty_entropy']:
+                continue    # enough material variety: not a blank screen
             rows.append(f'WARN EMPTY {x0},{y0}-{x0 + w - 1},{y0 + h - 1}')
             taken |= window
             counted += 1

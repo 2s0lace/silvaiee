@@ -621,3 +621,24 @@
   routes in FRLG are labelled. The dominant signal is RARE (town max 204) because the live
   `terrain.Rules` counts include the map being linted (and every `Pk*` draft), exactly the round-1
   bug. SEAM is 0 everywhere (self-inclusion), RECT/EMPTY never fire on vanilla.
+
+## Maintainer round 2 — step A1: four map-lint bug fixes (2026-10-14)
+All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_maps.py`:
+1. `stairs()`: `taken` was tested as `(start_line,) + first` (a 3-tuple) but stored as
+   `(line, run)` (2-tuples), so a chain was re-counted one line down. Now `(start_line, first)`
+   both places; a 4-step chain gives one warning, not two.
+2. `stairs()`: for `length == 1` the shift list `(1, -1, length, -length)` repeated values and the
+   duplicate shifts re-appended the same chain. Now `dict.fromkeys(...)`; a length-1 staircase gives
+   one horizontal + one vertical warning, not four.
+3. `empty()`: one decorated/event cell no longer rescues a 15x10 screen. A window is empty when it
+   has fewer than 2 decorated/event cells **and** material Shannon entropy below `empty_entropy`.
+   Measured floor: the minimum entropy of any 15x10 window over the 19 vanilla town/city maps is
+   **0.327 bits** (VermilionCity), so `empty_entropy = 0.3`; no vanilla window is rescued by entropy
+   alone (every vanilla candidate window already has >=2 decorations or solid/water).
+4. `rects()`: components are pruned of tendrils (cells with fewer than 2 same-material 4-neighbours,
+   repeatedly) before the bounding box, and a component is border-exempt only when at least
+   `rect_min` of its cells sit on the map border. A square pond joined to the edge by a 1-tile
+   stream now fires instead of inheriting the stream's border-touching bbox.
+- Effect on the fixtures (same harness as A0): PkLintStairs stairs 2->1, PkLintStraight empty 1->0,
+  PkLintSeam now 0 (its signal moves to SEAM/RARE once the snapshot lands in A2). Vanilla unchanged.
+- Full suite (A0+A1 files): the four new tests pass; the old calibration test is rewritten in A4.

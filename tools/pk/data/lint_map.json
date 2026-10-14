@@ -10,5 +10,5 @@
   "rect_min": 8, "rect_fill": 1.0, "rect_border": true,
   "empty_w": 15, "empty_h": 10, "empty_margin": 2,
   "empty_types": ["MAP_TYPE_TOWN", "MAP_TYPE_CITY"],
-  "empty_solid": true, "empty_water_frac": 0.3,
+  "empty_solid": true, "empty_water_frac": 0.3, "empty_entropy": 0.3,
   "max_lines": 12 }
