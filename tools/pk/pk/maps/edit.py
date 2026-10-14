@@ -40,13 +40,19 @@ def area(text, grid):
 
 
 def usage(repo, pair):
-    """{metatile: {(coll, elev): count}} over every layout using the same tileset pair."""
+    """{metatile: {(coll, elev): count}} over every vanilla layout using the same tileset pair.
+
+    Pk* drafts are excluded: they are never reference data, and including them would make the
+    collision/elevation a painted cell gets depend on which drafts happen to exist (non-reproducible
+    polish output)."""
     cache = getattr(repo, '_pk_usage', {})
     key = (pair.primary['symbol'], pair.secondary['symbol'])
     if key not in cache:
         stats = {}
         for layout in repo.layouts().values():
             if (layout.get('primary_tileset'), layout.get('secondary_tileset')) != key:
+                continue
+            if str(layout.get('id', '')).startswith('LAYOUT_PK_'):
                 continue
             try:
                 raw = repo.read(layout['blockdata_filepath'])
@@ -174,12 +180,51 @@ def command(repo, tx, args, opts):
             rows = stamp_overlay(grid, pair, rect, rows, show_events)
         return Result(f'{grid.name} {grid.w}x{grid.h} rect {x},{y},{w}x{h} layer:{"+".join(layers)}', note + rows)
     if verb == 'render' and len(rest) == 1:
-        from .meta import render_png
+        from .meta import render_png, render_compare
         grid, pair = load(repo, rest[0])
-        rect = parse_rect(opts.get('rect'), grid.w, grid.h)
+        viewport = opts.get('viewport')
+        if viewport:
+            m = re.fullmatch(r'(\d+),(\d+)', viewport)
+            if not m:
+                raise PkError('PARSE', '--viewport is x,y')
+            vx, vy = int(m[1]), int(m[2])
+            if vx + 15 > grid.w or vy + 10 > grid.h:
+                raise PkError('BOUNDS', f'viewport {vx},{vy} needs 15x10 inside {grid.w}x{grid.h}')
+            rect = (vx, vy, 15, 10)
+        else:
+            rect = parse_rect(opts.get('rect'), grid.w, grid.h)
+        scale = int(opts['scale']) if opts.get('scale') else (3 if viewport else 1)
+        if scale < 1:
+            raise PkError('BOUNDS', '--scale must be >= 1')
+        grid_lines = bool(opts.get('grid'))
+        if opts.get('compare'):
+            other, other_pair = load(repo, opts['compare'])
+            data = render_compare(repo, (grid, pair), (other, other_pair), scale, grid_lines)
+            out = opts.get('out') or f'.pk/render/{grid.name}_vs_{other.name}.png'
+            tx.stage(repo.path(out).relative_to(repo.root).as_posix(), data)
+            return Result(f'render compare {grid.name} vs {other.name} scale:{scale} '
+                          f'{"grid " if grid_lines else ""}-> {out}',
+                          [f'left {grid.w}x{grid.h} right {other.w}x{other.h} gap 1 tile'])
         out = opts.get('out') or f'.pk/render/{grid.name}.png'
-        tx.stage(repo.path(out).relative_to(repo.root).as_posix(), render_png(repo, grid, pair, rect, int(opts.get('scale', 1))))
-        return Result(f'render {grid.name} {rect[2]}x{rect[3]} -> {out}')
+        tx.stage(repo.path(out).relative_to(repo.root).as_posix(),
+                 render_png(repo, grid, pair, rect, scale, grid_lines))
+        return Result(f'render {grid.name} {rect[2]}x{rect[3]} scale:{scale}'
+                      f'{" grid" if grid_lines else ""} -> {out}')
+    if verb == 'seam' and len(rest) == 2:
+        from . import terrain
+        grid, pair = load(repo, rest[0])
+        box = area(rest[1], grid)
+        ring = int(opts.get('ring', 2))
+        if ring < 1:
+            raise PkError('BOUNDS', '--ring must be >= 1')
+        rules = terrain.Rules(repo, pair, include_pk=False)
+        changed = terrain.repair(repo, pair, rules, grid, box, ring)
+        if changed:
+            save(tx, grid)
+        bad = terrain.unseen(grid, rules, changed)
+        note = [f'WARN {len(bad)} seams still unseen after repair'] if bad else []
+        return Result(f'seam {grid.name} box {box[0]},{box[1]},{box[2]}x{box[3]} ring:{ring} '
+                      f'{len(changed)} metatiles changed', note + changed_view(grid, pair, changed, 'class'))
     if verb == 'at' and len(rest) == 2:
         grid, pair = load(repo, rest[0])
         x, y = point(rest[1], grid)
@@ -273,8 +318,14 @@ def command(repo, tx, args, opts):
             for i in range(w):
                 grid.set(dx + i, dy + j, block[j][i])
                 cells.append((dx + i, dy + j))
+        repaired = []
+        if opts.get('repair'):
+            from . import terrain
+            rules = terrain.Rules(repo, pair, include_pk=False)
+            repaired = terrain.repair(repo, pair, rules, grid, (dx, dy, w, h), int(opts.get('ring', 2)))
         save(tx, grid)
-        return Result(f'copy {grid.name} {w}x{h} -> {dx},{dy}', changed_view(grid, pair, cells, layer))
+        tail = f' repair:{len(repaired)}' if opts.get('repair') else ''
+        return Result(f'copy {grid.name} {w}x{h} -> {dx},{dy}{tail}', changed_view(grid, pair, cells, layer))
     if verb == 'border' and len(rest) >= 2:
         grid, pair = load(repo, rest[0])
         bw, bh = grid.layout.get('border_width', 2), grid.layout.get('border_height', 2)

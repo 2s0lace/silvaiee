@@ -20,6 +20,7 @@ from pk.text.ops import command as text_command
 from pk.maps import edit as map_edit, meta as map_meta, events as map_events, check as map_check
 from pk.maps import resize as map_resize, create as map_create, terrain as map_terrain, lint as map_lint
 from pk.maps import paintover as map_paintover, export as map_export
+from pk.maps import polish as map_polish
 from pk.art import ops as art_ops
 from pk.bp import ops as bp_ops
 
@@ -89,11 +90,13 @@ def dispatch(repo, tx, argv):
     elif noun == 'map':
         args, opts = options(tail, values=('offset', 'limit', 'rect', 'layer', 'from', 'coll', 'elev', 'add', 'to',
                                            'anchor', 'fill', 'size', 'tilesets', 'type', 'like', 'music', 'group', 'out', 'scale',
-                                           'into'),
+                                           'into', 'viewport', 'compare', 'ring', 'max-steps'),
                              flags=('exact', 'no-events', 'fork-layout', 'drop-out-of-bounds', 'stamps', 'snapshot',
-                                    'all'))
+                                    'all', 'grid', 'repair'))
         if args and args[0] == 'paintover' and len(args) == 3:
             result = map_paintover.command(repo, tx, args, opts)
+        elif args and args[0] == 'polish' and len(args) == 2:
+            result = map_polish.command(repo, tx, args[1], opts)
         elif args and args[0] == 'resize' and len(args) == 2:
             result = map_resize.run(repo, tx, args[1], opts)
         elif args and args[0] == 'extend-to' and len(args) == 3:

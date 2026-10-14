@@ -20,7 +20,7 @@ from .tiles import Pair
 
 class Rules:
     """Adjacency statistics of one tileset pair, learned from every vanilla layout using it."""
-    def __init__(self, repo, pair):
+    def __init__(self, repo, pair, include_pk=True):
         self.pair = pair
         key = (pair.primary['symbol'], pair.secondary['symbol'])
         self.h, self.v, self.freq, self.by_mat = {}, {}, {}, {}
@@ -33,6 +33,8 @@ class Rules:
         for layout in repo.layouts().values():
             if (layout.get('primary_tileset'), layout.get('secondary_tileset')) != key:
                 continue
+            if not include_pk and str(layout.get('id', '')).startswith('LAYOUT_PK_'):
+                continue    # Pk* drafts are never reference data (project rule)
             w, h = layout['width'], layout['height']
             try:
                 cells = decode(repo.read(layout['blockdata_filepath'])[:w * h * 2])
@@ -79,23 +81,27 @@ class Rules:
 
 
 def solve(grid, rules, targets, margin=1, passes=6, local_weight=0.3, frozen=frozenset(),
-          choices=None, unary=None, diag_weight=0.0):
+          choices=None, unary=None, diag_weight=0.0, seed=None, freq_weight=0.05):
     """targets: {(x,y): material}. Returns {(x,y): metatile} for targets + margin ring.
 
-    Prior = 0.05*log(vanilla frequency) + local_weight*log(frequency in this map outside the
+    Prior = freq_weight*log(vanilla frequency) + local_weight*log(frequency in this map outside the
     targets): a new area then looks like the rest of the same map (Pallet's light grass, not the
     tufted forest-edge grass that dominates other layouts of the pair).
 
     choices replaces the material -> candidate set: {(x,y): [metatile,...]} for any cell.
     unary(m, p) -> float is added to every candidate score (used by map paintover, which scores
-    -k * colour distance between the metatile's pixels and the painted image)."""
+    -k * colour distance between the metatile's pixels and the painted image).
+
+    seed starts the iterative pass from an existing assignment instead of a fresh greedy one, so
+    seam repair only changes cells that actually improve the adjacency score (few-cell edits)."""
     local = {}
     for y in range(grid.h):
         for x in range(grid.w):
             if (x, y) not in targets:
                 m = grid.at(x, y)[0]
                 local[m] = local.get(m, 0) + 1
-    prior = lambda m: 0.05 * math.log(rules.freq.get(m, 0) + 1) + local_weight * math.log(local.get(m, 0) + 1)
+    prior = lambda m: (freq_weight * math.log(rules.freq.get(m, 0) + 1)
+                       + local_weight * math.log(local.get(m, 0) + 1))
     cells = dict(targets)
     for (x, y) in list(targets):
         for dx in range(-margin, margin + 1):
@@ -125,36 +131,40 @@ def solve(grid, rules, targets, margin=1, passes=6, local_weight=0.3, frozen=fro
                 if n is not None:
                     s += rules.pair_score(table, m, n)
         return diag_weight * s
-    # Greedy initialisation from the outside in: each cell is chosen against the neighbours that
-    # are already fixed (untouched map cells or cells assigned earlier). This avoids most of the
-    # local optima a plain row-by-row start falls into.
     current = {}
-    def known(x, y):
-        if (x, y) in current:
-            return current[(x, y)]
-        if (x, y) not in cells and grid.inside(x, y):
-            return grid.at(x, y)[0]
-        return None
-    def depth(p):
-        d, frontier = 0, {p}
-        while all(q in cells for q in frontier) and d < 50:
-            d += 1
-            frontier = {(x + dx, y + dy) for x, y in frontier for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))}
-        return d
-    for p in sorted(cells, key=lambda p: (depth(p), p[1], p[0])):
-        x, y = p
-        best, best_score = None, None
-        for m in cand[p]:
-            s = prior(m) + bonus(m, p)
-            for (nx, ny), table, first in (((x - 1, y), rules.h, True), ((x + 1, y), rules.h, False),
-                                           ((x, y - 1), rules.v, True), ((x, y + 1), rules.v, False)):
-                n = known(nx, ny)
-                if n is not None:
-                    s += rules.pair_score(table, n, m) if first else rules.pair_score(table, m, n)
-            s += diag_score(m, x, y, known)
-            if best_score is None or s > best_score or (s == best_score and m < best):
-                best, best_score = m, s
-        current[p] = best
+    if seed is not None:
+        for p in cells:
+            current[p] = seed.get(p) if seed.get(p) is not None else grid.at(*p)[0]
+    else:
+        # Greedy initialisation from the outside in: each cell is chosen against the neighbours
+        # that are already fixed (untouched map cells or cells assigned earlier). This avoids most
+        # of the local optima a plain row-by-row start falls into.
+        def known(x, y):
+            if (x, y) in current:
+                return current[(x, y)]
+            if (x, y) not in cells and grid.inside(x, y):
+                return grid.at(x, y)[0]
+            return None
+        def depth(p):
+            d, frontier = 0, {p}
+            while all(q in cells for q in frontier) and d < 50:
+                d += 1
+                frontier = {(x + dx, y + dy) for x, y in frontier for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))}
+            return d
+        for p in sorted(cells, key=lambda p: (depth(p), p[1], p[0])):
+            x, y = p
+            best, best_score = None, None
+            for m in cand[p]:
+                s = prior(m) + bonus(m, p)
+                for (nx, ny), table, first in (((x - 1, y), rules.h, True), ((x + 1, y), rules.h, False),
+                                               ((x, y - 1), rules.v, True), ((x, y + 1), rules.v, False)):
+                    n = known(nx, ny)
+                    if n is not None:
+                        s += rules.pair_score(table, n, m) if first else rules.pair_score(table, m, n)
+                s += diag_score(m, x, y, known)
+                if best_score is None or s > best_score or (s == best_score and m < best):
+                    best, best_score = m, s
+            current[p] = best
     get = lambda x, y: current[(x, y)] if (x, y) in current else grid.at(x, y)[0]
     order = sorted(cells, key=lambda p: (p[1], p[0]))
     for _ in range(passes):
@@ -180,6 +190,78 @@ def solve(grid, rules, targets, margin=1, passes=6, local_weight=0.3, frozen=fro
         if not changed:
             break
     return current
+
+
+def ring_cells(grid, box, ring):
+    """The editable band around `box`: cells within `ring` tiles of the box rectangle, minus the
+    deep interior (the box shrunk by `ring`), so a boundary may move in or out by up to `ring`."""
+    x0, y0, w, h = box
+    ex0, ey0, ex1, ey1 = x0 - ring, y0 - ring, x0 + w - 1 + ring, y0 + h - 1 + ring
+    sx0, sy0, sx1, sy1 = x0 + ring, y0 + ring, x0 + w - 1 - ring, y0 + h - 1 - ring
+    cells = set()
+    for y in range(max(ey0, 0), min(ey1, grid.h - 1) + 1):
+        for x in range(max(ex0, 0), min(ex1, grid.w - 1) + 1):
+            if sx0 <= x <= sx1 and sy0 <= y <= sy1:
+                continue                    # deep interior stays frozen
+            cells.add((x, y))
+    return cells
+
+
+def repair(repo, pair, rules, grid, box, ring=2, frozen=frozenset(), passes=16):
+    """Re-solve only the band around `box` (ring_cells) against the *seen* vanilla adjacencies.
+
+    A cell is only swapped for another metatile of the same material, and only when that lowers the
+    number of adjacent metatile pairs that never occur in vanilla (the SEAM metric, sockets applied).
+    Unlike solve(), this minimises the critic directly, so a repair changes few cells and still
+    removes seams. Returns the list of changed cells; the rest of the map is untouched."""
+    targets = ring_cells(grid, box, ring) - set(frozen)
+    if not targets:
+        return []
+    known = set(rules.freq)
+    sockets = {}
+
+    def resolve(metatile):
+        if metatile not in sockets:
+            sock = (pair.info(metatile) or {}).get('socket')
+            sockets[metatile] = int(sock) if sock is not None else metatile
+        return sockets[metatile]
+
+    def unseen(a, b, table):
+        sa, sb = resolve(a), resolve(b)
+        return 1 if (sa in known and sb in known and (sa, sb) not in table) else 0
+
+    def cell_cost(x, y, metatile):
+        cost = 0
+        if x > 0:
+            cost += unseen(grid.at(x - 1, y)[0], metatile, rules.h)
+        if x + 1 < grid.w:
+            cost += unseen(metatile, grid.at(x + 1, y)[0], rules.h)
+        if y > 0:
+            cost += unseen(grid.at(x, y - 1)[0], metatile, rules.v)
+        if y + 1 < grid.h:
+            cost += unseen(metatile, grid.at(x, y + 1)[0], rules.v)
+        return cost
+
+    before = {p: grid.at(*p) for p in targets}
+    order = sorted(targets)
+    for _ in range(passes):
+        changed = 0
+        for (x, y) in order:
+            old = grid.at(x, y)
+            material = rules.material(old)
+            best, best_cost = old[0], cell_cost(x, y, old[0])
+            for metatile in sorted(rules.by_mat.get(material, ())):
+                if metatile == old[0]:
+                    continue
+                cost = cell_cost(x, y, metatile)
+                if cost < best_cost or (cost == best_cost and metatile < best):
+                    best, best_cost = metatile, cost
+            if best != old[0]:
+                grid.set(x, y, bits_for(repo, pair, rules, best, material, old))
+                changed += 1
+        if not changed:
+            break
+    return [p for p in targets if grid.at(*p) != before[p]]
 
 
 def unseen(grid, rules, cells):

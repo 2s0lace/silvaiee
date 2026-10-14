@@ -158,8 +158,14 @@ def stamp(repo, tx, args, opts, pagination):
                     continue
                 grid.set(x + i, y + j, tuple(c))
                 cells.append((x + i, y + j))
+        repaired = []
+        if opts.get('repair'):
+            from . import terrain
+            rules = terrain.Rules(repo, pair, include_pk=False)
+            repaired = terrain.repair(repo, pair, rules, grid, (x, y, w, h), int(opts.get('ring', 2)))
         save(tx, grid)
-        return Result(f'stamp {rest[1]} placed in {grid.name} at {x},{y}', changed_view(grid, pair, cells, 'class'))
+        tail = f' repair:{len(repaired)}' if opts.get('repair') else ''
+        return Result(f'stamp {rest[1]} placed in {grid.name} at {x},{y}{tail}', changed_view(grid, pair, cells, 'class'))
     if verb == 'from-tileset' and len(rest) == 3:
         return stamp_from_tileset(repo, tx, *rest, opts)
     if verb == 'mine' and len(rest) == 1:

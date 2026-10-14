@@ -791,3 +791,15 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   windows, lint prints `INFO patch unavailable`.
 - Test: `test_maps.Lint.test_patch_critic_is_leave_one_out_and_info_only`.
 
+## Round 2 B2: seam repair (2026-10-14)
+- `pk map seam MAP x,y,WxH [--ring 2]` re-solves only the band around the box (`ring_cells`: the cells
+  within `ring` of the rectangle minus the deep interior) against the *seen* vanilla adjacencies: a cell
+  is swapped only for another metatile of the same material, and only when that removes a never-seen
+  adjacent pair. The box interior and everything beyond the ring stay frozen; the solver minimises the
+  SEAM metric directly, so it changes few cells. `pk map copy ... --repair` and
+  `pk map stamp place ... --repair` run it on the pasted box (off by default).
+- Test (`test_maps.SeamRepair.test_repair_fewer_seams_after_copy`): copy a 6x6 block from `Route1_Frlg`
+  (10,16) onto `PkSandbox2_Frlg` at (2,4) -> **24 seams without `--repair`, 2 with** (29 cells changed).
+- `terrain.Rules(include_pk=False)` is used by repair: Pk* drafts are never reference data.
+
+
