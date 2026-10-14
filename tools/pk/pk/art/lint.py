@@ -56,7 +56,7 @@ class Vanilla:
         for sym, base in sources:
             ts = tileset(repo, sym)
             img = Image.open(io.BytesIO(repo.read(ts['tiles'])))
-            sheets[base] = (img.width // 8, list(img.getdata()), img.width)
+            sheets[base] = (img.width // 8, list(getattr(img, 'get_flattened_data', img.getdata)()), img.width)
             for first, count in animated_ranges(repo, sym):
                 self.animated |= set(range(first, first + count))
         p_ts = tileset(repo, primary)

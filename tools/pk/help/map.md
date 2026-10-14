@@ -12,6 +12,7 @@ Exceptions override defaults, including every event-overlay cell; --no-events ne
 More than 10% exceptions: full grid for that layer. Ties use the lower value; elev is hexadecimal.
 Parse symbol=value from the right (counter symbol: ==0); split the header at "; exceptions ".
 pk map lint MAP (read-only; thresholds in tools/pk/data/lint_map.json; 0 is clean)
+ map lint is experimental and not yet calibrated on all vanilla maps.
  RARE: a shore (water/sand) boundary whose metatile pair occurs <= rare_max times in vanilla.
  WARN SEAM h|v 0x123-0x2A3 @x,y: adjacent metatiles never seen in vanilla layouts of this tileset pair (terrain.Rules).
  WARN STAIR pair span run:n: a straight natural edge longer than straight_max (towns/cities only).

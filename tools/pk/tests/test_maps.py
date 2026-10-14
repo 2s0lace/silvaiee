@@ -11,6 +11,7 @@ import unittest
 HOME = Path(__file__).resolve().parents[1]
 ROOT = HOME.parents[1]
 sys.path.insert(0, str(HOME))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pk.core.errors import PkError
 from pk.core.repo import Repo
 from pk.core.journal import Transaction
@@ -289,6 +290,29 @@ class Lint(unittest.TestCase):
         rows, n = lint.stairs(dict(cfg, mat=grid.mats), grid, cfg)
         self.assertEqual((rows, n), (['WARN STAIR s|w 0,0-8,2 steps:3'], 1))
 
+    def test_stairs_taken_marks_whole_chain(self):
+        # A 4-step run must be counted once: without the (line, run) `taken` key it was re-found
+        # one line down as a fresh 3-step chain and reported again.
+        from pk.maps import lint
+        cfg = self.cfg(stair_min_steps=3)
+        grid = FakeGrid(['sswwwwww',
+                         'wwsswwww',
+                         'wwwwssww',
+                         'wwwwwwss',
+                         'wwwwwwww'])
+        rows, n = lint.stairs(dict(cfg, mat=grid.mats), grid, cfg)
+        self.assertEqual(n, 2, rows)      # one 4-step chain and its opposite shore; not re-counted
+
+    def test_stairs_length_one_shifts_are_deduped(self):
+        # length == 1 made the shift list (1, -1, 1, -1): the duplicated shifts appended the same
+        # chain twice. The dedup keeps exactly one horizontal and one vertical warning.
+        from pk.maps import lint
+        cfg = self.cfg(stair_min_run=1, stair_min_steps=3)
+        grid = FakeGrid(['ssss', 'wsss', 'wwss', 'wwws'])
+        rows, n = lint.stairs(dict(cfg, mat=grid.mats), grid, cfg)
+        self.assertEqual(n, 2)
+        self.assertTrue(all('steps:3' in r for r in rows), rows)
+
     def test_rect_fill_and_border(self):
         from pk.maps import lint
         cfg = self.cfg()
@@ -305,6 +329,23 @@ class Lint(unittest.TestCase):
         rows, n = lint.rects(meta, grid, meta)
         self.assertEqual(n, 0, 'border-touching natural rects are vanilla-like')
 
+    def test_rect_tendril_to_border_is_not_exempt(self):
+        # A square pond joined to the border by a 1-tile stream used to inherit the stream's
+        # bbox, touch the border and get skipped. The tendril is pruned before the border test.
+        from pk.maps import lint
+        cfg = self.cfg()
+        rows_grid = ['.' * 14 for _ in range(14)]
+        for y in range(2, 10):
+            for x in range(2, 10):
+                rows_grid[y] = rows_grid[y][:x] + 'w' + rows_grid[y][x + 1:]
+        for y in range(10, 13):            # 1-tile stream from the pond down to the bottom edge
+            rows_grid[y] = rows_grid[y][:5] + 'w' + rows_grid[y][6:]
+        grid = FakeGrid(rows_grid)
+        meta = dict(cfg, mat=grid.mats, rect_border=True)
+        rows, n = lint.rects(meta, grid, meta)
+        self.assertEqual(n, 1)
+        self.assertTrue(rows[0].startswith('WARN RECT w 2,2-9,9'), rows)
+
     def test_empty_window_needs_clean_ground(self):
         from pk.maps import lint
         cfg = self.cfg()
@@ -315,8 +356,14 @@ class Lint(unittest.TestCase):
         blocks = grid.mats | {(5, 5): 'solid'}
         self.assertEqual(lint.empty(dict(meta, mat=blocks), grid, FakePair(), cfg), ([], 0),
                          'solid tiles anywhere in a 15x10 window cancel it')
-        self.assertEqual(lint.empty(dict(meta, marks={(8, 5): 'o'}), grid, FakePair(), cfg), ([], 0),
-                         'event cells count as decoration')
+        self.assertEqual(lint.empty(dict(meta, marks={(8, 5): 'o'}), grid, FakePair(), cfg),
+                         (['WARN EMPTY 2,2-16,11'], 1),
+                         'one event cell no longer rescues a whole screen')
+        self.assertEqual(lint.empty(dict(meta, marks={(8, 5): 'o', (9, 5): 'o'}), grid, FakePair(), cfg),
+                         ([], 0), 'two event cells rescue the window')
+        varied = {c: 's' if (c[0] + c[1]) % 2 else 'g' for c in grid.mats}
+        self.assertEqual(lint.empty(dict(meta, mat=varied), grid, FakePair(), cfg), ([], 0),
+                         'a material-entropy floor rescues a varied window')
 
     def test_ugly_scores_above_vanilla(self):
         """Calibration: every deliberately ugly map scores above every vanilla map, and the

@@ -600,3 +600,24 @@
   tall_grass_1 0x00D, grass_1 0x01C, sand_1 0x115, ledge_s_1 0x087, path_2 0x0D9, grass_6 0x01F,
   water_7 0x110). Per the task, work STOPS after the first tileset until the owner checks quality.
 - Full suite: **117 tests, 1 failure** (map lint; step 5), 762 s.
+
+## Maintainer round 2 — step A0: prep (2026-10-14)
+- Added the rule-mandated note "map lint is experimental and not yet calibrated on all vanilla maps"
+  to `release/silvaiee/README.md` (Known issues) and `tools/pk/help/map.md`; it stays until every
+  Part A target passes.
+- `tests/test_maps.py` inserts its own directory into `sys.path`, so a single test file runs alone;
+  `pk/art/lint.py` uses `getattr(img, 'get_flattened_data', img.getdata)()` (Pillow deprecated
+  `getdata`).
+- BEFORE numbers, measured over all 72 vanilla FRLG outdoor maps with a harness that calls the same
+  `pk.maps.lint.run` the CLI does (`pk map lint` is one map per process; the harness reuses one Repo):
+
+  | stratum | maps | score p50 | p95 | max | score 0 |
+  |---|---|---|---|---|---|
+  | town (TOWN+CITY) | 19 | 26 | 139 | 205 (Vermilion) | 16% |
+  | route | 53 | 24 | 80 | 121 | 8% |
+  | ocean (OCEAN_ROUTE) | 0 | – | – | – | – |
+
+  There are no `MAP_TYPE_OCEAN_ROUTE` maps in this data set; the route stratum is what the ocean
+  routes in FRLG are labelled. The dominant signal is RARE (town max 204) because the live
+  `terrain.Rules` counts include the map being linted (and every `Pk*` draft), exactly the round-1
+  bug. SEAM is 0 everywhere (self-inclusion), RECT/EMPTY never fire on vanilla.
