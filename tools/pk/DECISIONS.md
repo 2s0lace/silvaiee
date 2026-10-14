@@ -711,3 +711,22 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   and `severity` for delta mode; rebuilt with `pk map lint --snapshot`.
 - Unit tests (synthetic grids, no repo): `tests/test_maps.py::Lint.test_severity_formula` checks the
   excesses, the zero-threshold case, a score-0 map and a skipped (None) check.
+
+## Maintainer round 2 — step A7: measure severity — FIXTURE TARGET MISSED (2026-10-14)
+- Ran `pk map lint` on all 72 vanilla outdoor maps, the five `PkLint*` fixtures and all 7 benchmarks
+  (a throwaway script calling `lint.run`, same code as the CLI; it writes `.pk/report_a7.json`).
+- Part A targets re-run and PASS: 0 SEAM on 72/72; score 0 on 72/72 with none >2; every fixture and the
+  <=4 benchmarks still score above vanilla max (0); bench on grass 0 / water 6 SEAM; **full suite 122
+  tests, 0 failures, 735 s**; AGENT.md 38 lines = `pk help`.
+- Vanilla severity: **0.0 on all 72** maps (all score 0).
+- New target "every `PkLint*` fixture and every benchmark with human<=4 has severity > Opus": **MISSED**.
+  Opus 8.2; bench: Muse 18.2, Sonnet 9.7, DeepSeek 29.8, Sol 16.7 (all >8.2, PASS). Fixtures:
+  Rect 16.9, Straight 17.5, Stairs 12.7 (PASS), but **PkLintSeam 6.0** and **PkLintEmpty 0.2** (FAIL).
+  - PkLintEmpty is one blank screen: EMPTY fires once, excess 1, so 100/480 = 0.2 by construction.
+  - PkLintSeam's custom metatiles (0x2E1 flowers x24, 0x2E8 wall x30) have no socket, so A3 reports
+    them `INFO UNCHECKED` and does not score them; its scored excess drops to 29 -> 6.0.
+  The formula and targets are frozen; not tweaked.
+- Info (not a target): Spearman rank correlation between severity and human score over the 7 benchmarks
+  is **-0.505** (worse maps have higher severity), driven by DeepSeek (most novel shore pairs) ranking
+  worst while humans rated it mid-pack.
+- Because a target missed, README "Known issues" and `help/map.md` keep the "experimental" wording.
