@@ -1,11 +1,13 @@
 """pk map lint: visual ugliness so cheap models can fix maps without judging images.
 
 Reuses the terrain model (DECISIONS.md 4b): the material of a cell is the class-view label
-(pk map show) or the first tag of a named metatile, and SEAM compares metatile pairs against
-the same vanilla adjacency statistics the terrain solver learned (terrain.Rules). Thresholds
-live in tools/pk/data/lint_map.json; calibrated so every deliberately ugly map (rectangular
-ponds, staircase shores, unseen seams, empty screens, and the weaker PkPallet benchmark drafts)
-scores above the clean vanilla maps (test_maps.Lint.test_ugly_scores_above_vanilla).
+(pk map show) or the first tag of a named metatile. SEAM and RARE compare metatile pairs against a
+FROZEN snapshot of the vanilla layouts (tools/pk/data/vanilla_adjacency.json, written only by
+`pk map lint --snapshot`), never against live files, so an edited or generated map cannot grade
+itself. Every other threshold (stairs/rects/empty) is measured per stratum (town/route/ocean) over
+all vanilla FRLG outdoor maps and lives in tools/pk/data/lint_map.json. A check fires only when its
+count exceeds the p95 (or the max when the stratum has fewer than 20 maps) of that stratum; the
+score is the number of checks that fire.
 """
 import json
 import math
@@ -13,19 +15,35 @@ import math
 from ..core.errors import PkError
 from ..core.out import Result
 from .edit import load
+from .grid import decode
 from .layers import events
 from .terrain import Rules
 
 LINT_JSON = 'tools/pk/data/lint_map.json'
+SNAPSHOT_JSON = 'tools/pk/data/vanilla_adjacency.json'
+SNAPSHOT_VERSION = 1
+PK_LAYOUT = 'LAYOUT_PK_'
 
 CHECKS = [('natural', list), ('decor_tags', list), ('stair_min_steps', int), ('stair_min_run', int),
           ('straight_max', int), ('straight_types', list), ('dash_min_run', int), ('dash_min_gap', int),
           ('dash_types', list),
-          ('rare_mats', list), ('rare_max', int),
+          ('rare_mats', list), ('rare_rate', (int, float)),
           ('rect_min', int), ('rect_fill', (int, float)), ('rect_border', bool),
           ('empty_w', int), ('empty_h', int), ('empty_margin', int), ('empty_types', list),
           ('empty_solid', bool), ('empty_water_frac', (int, float)), ('empty_entropy', (int, float)),
           ('max_lines', int)]
+
+TOWN_TYPES = {'MAP_TYPE_TOWN', 'MAP_TYPE_CITY'}
+STRATUM_TYPES = {'town': TOWN_TYPES, 'route': {'MAP_TYPE_ROUTE'}, 'ocean': {'MAP_TYPE_OCEAN_ROUTE'}}
+OUTDOOR_TYPES = TOWN_TYPES | {'MAP_TYPE_ROUTE', 'MAP_TYPE_OCEAN_ROUTE'}
+
+
+def stratum_of(map_type):
+    if map_type in TOWN_TYPES:
+        return 'town'
+    if map_type == 'MAP_TYPE_OCEAN_ROUTE':
+        return 'ocean'
+    return 'route'
 
 
 def pair_rules(repo, pair):
@@ -46,20 +64,105 @@ def thresholds(repo):
             raise PkError('PARSE', f'{LINT_JSON}: missing {key}') from None
         if not isinstance(value, kind):
             raise PkError('PARSE', f'{LINT_JSON}: {key} has the wrong type')
+    if not isinstance(cfg.get('strata'), dict):
+        raise PkError('PARSE', f'{LINT_JSON}: missing strata (run pk map lint --snapshot)')
     return cfg
 
 
-def seams(grid, rules):
-    rows = []
+def metric_threshold(strata, stratum, metric):
+    """A check fires above the stratum p95, or its max when the stratum has <20 maps."""
+    stats = (strata.get(stratum) or {}).get(metric)
+    if not stats:
+        return None
+    return stats['p95'] if stats.get('n', 0) >= 20 else stats['max']
+
+
+def socket_of(pair, mt):
+    """A custom metatile declares a vanilla `socket` metatile: SEAM/RARE test the socket."""
+    info = pair.info(mt) or {}
+    sock = info.get('socket')
+    return int(sock) if sock is not None else mt
+
+
+class PairStats:
+    """Snapshot statistics of one tileset pair; h/v are tuple-keyed for membership tests."""
+
+    def __init__(self, data):
+        self.layouts = data['layouts']
+        self.metatiles = set(data['metatiles'])
+        self.h = {tuple(int(v) for v in k.split(',')): c for k, c in data['h'].items()}
+        self.v = {tuple(int(v) for v in k.split(',')): c for k, c in data['v'].items()}
+
+
+class Snap:
+    """The frozen vanilla snapshot; `.pair()` is None for pairs absent from it."""
+
+    def __init__(self, doc):
+        self.doc = doc
+        self.maps = doc.get('maps', {})
+        self._pairs = doc.get('pairs', {})
+        self._cache = {}
+
+    def pair(self, pair):
+        key = pair.primary['symbol'] + '+' + pair.secondary['symbol']
+        if key not in self._cache:
+            data = self._pairs.get(key)
+            self._cache[key] = PairStats(data) if data is not None else None
+        return self._cache[key]
+
+
+def load_snapshot(repo):
+    cached = getattr(repo, '_pk_lint_snapshot', None)
+    if cached is not None:
+        return cached
+    try:
+        raw = repo.read(SNAPSHOT_JSON)
+    except PkError:
+        return None
+    try:
+        snap = Snap(json.loads(raw))
+    except (ValueError, KeyError, TypeError) as exc:
+        raise PkError('PARSE', f'{SNAPSHOT_JSON}: {exc}; rerun pk map lint --snapshot') from None
+    repo._pk_lint_snapshot = snap
+    return snap
+
+
+def seams(grid, pair, snap):
+    """(WARN rows, {unchecked id: count}) of metatile pairs never seen in the vanilla snapshot.
+    Custom metatiles are tested through their socket; one without a socket is reported, not scored."""
+    if snap is None:
+        return None
+    stats = snap.pair(pair)
+    if stats is None:
+        return None
+    known = stats.metatiles
+
+    def resolve(mt):
+        sock = (pair.info(mt) or {}).get('socket')
+        if sock is not None:
+            return int(sock), True
+        return (mt, True) if mt in known else (mt, False)
+
+    rows, unchecked = [], {}
+
+    def check(a0, b0, table, tag, x, y):
+        a, oka = resolve(a0)
+        b, okb = resolve(b0)
+        if not (oka and okb):
+            for rid, ok in ((a0, oka), (b0, okb)):
+                if not ok:
+                    unchecked[rid] = unchecked.get(rid, 0) + 1
+            return
+        if (a, b) not in table:
+            rows.append(f'WARN SEAM {tag} 0x{a:03X}-0x{b:03X} @{x},{y}')
+
     for y in range(grid.h):
         for x in range(grid.w - 1):
-            if (grid.at(x, y)[0], grid.at(x + 1, y)[0]) not in rules.h:
-                rows.append(f'WARN SEAM h 0x{grid.at(x, y)[0]:03X}-0x{grid.at(x + 1, y)[0]:03X} @{x},{y}')
+            check(grid.at(x, y)[0], grid.at(x + 1, y)[0], stats.h, 'h', x, y)
     for y in range(grid.h - 1):
         for x in range(grid.w):
-            if (grid.at(x, y)[0], grid.at(x, y + 1)[0]) not in rules.v:
-                rows.append(f'WARN SEAM v 0x{grid.at(x, y)[0]:03X}-0x{grid.at(x, y + 1)[0]:03X} @{x},{y}')
-    return rows
+            check(grid.at(x, y)[0], grid.at(x, y + 1)[0], stats.v, 'v', x, y)
+    return rows, unchecked
 
 
 def boundary_runs(mat, w, h, horizontal):
@@ -138,6 +241,7 @@ def stairs(meta, grid, cfg):
                                 else f'{chain[0][0]},{min(xs)}-{chain[-1][0]},{max(xs)}')
                         rows.append(f'WARN STAIR {label} {span} steps:{len(chain)}')
                         counted += 1
+
             def dash_emit(spans):
                 if dash_on and len(spans) >= 2:
                     span = (f'{spans[0][0]},{line}-{spans[-1][1]},{line}' if horizontal
@@ -160,31 +264,50 @@ def stairs(meta, grid, cfg):
     return rows, counted
 
 
-def rare(meta, grid, cfg):
-    """Rare shore adjacencies: a boundary between two natural cells whose metatile pair occurs
-    at most rare_max times in the vanilla layouts of the pair. Hand-made shores pair their tiles
-    with whatever vanilla put there; a generated shore often pairs tiles that never meet."""
+def rare(meta, grid, cfg, snap):
+    """Rare shore adjacencies: a water/sand boundary whose metatile pair is at most
+    rare_rate * layouts occurrences in the vanilla snapshot of the pair. The rate normalisation
+    keeps unique-tileset maps (Vermilion, Viridian Forest) from lighting up on every tile."""
+    if snap is None:
+        return None, None, None
+    stats = snap.pair(meta['pair'])
+    if stats is None:
+        return None, None, None
+    pair = meta['pair']
+    known = stats.metatiles
     mats = set(cfg['rare_mats'])
-    rules = meta['rules']
     mat = meta['mat']
-    rows, counted = [], 0
+    limit = cfg['rare_rate'] * max(1, stats.layouts)
+    rows, counted, unchecked = [], 0, {}
+
+    def resolve(mt):
+        sock = (pair.info(mt) or {}).get('socket')
+        if sock is not None:
+            return int(sock), True
+        return (mt, True) if mt in known else (mt, False)
+
+    def check(a0, b0, table, tag, x, y):
+        nonlocal counted
+        a, oka = resolve(a0)
+        b, okb = resolve(b0)
+        if not (oka and okb):
+            for rid, ok in ((a0, oka), (b0, okb)):
+                if not ok:
+                    unchecked[rid] = unchecked.get(rid, 0) + 1
+            return
+        if table.get((a, b), 0) <= limit:
+            rows.append(f'WARN RARE {tag} 0x{a:03X}-0x{b:03X} @{x},{y}')
+            counted += 1
+
     for y in range(grid.h):
         for x in range(grid.w - 1):
-            if not ({mat[(x, y)], mat[(x + 1, y)]} & mats):
-                continue
-            a, b = grid.at(x, y)[0], grid.at(x + 1, y)[0]
-            if rules.h.get((a, b), 0) <= cfg['rare_max']:
-                rows.append(f'WARN RARE h 0x{a:03X}-0x{b:03X} @{x},{y}')
-                counted += 1
+            if {mat[(x, y)], mat[(x + 1, y)]} & mats:
+                check(grid.at(x, y)[0], grid.at(x + 1, y)[0], stats.h, 'h', x, y)
     for y in range(grid.h - 1):
         for x in range(grid.w):
-            if not ({mat[(x, y)], mat[(x, y + 1)]} & mats):
-                continue
-            a, b = grid.at(x, y)[0], grid.at(x, y + 1)[0]
-            if rules.v.get((a, b), 0) <= cfg['rare_max']:
-                rows.append(f'WARN RARE v 0x{a:03X}-0x{b:03X} @{x},{y}')
-                counted += 1
-    return rows, counted
+            if {mat[(x, y)], mat[(x, y + 1)]} & mats:
+                check(grid.at(x, y)[0], grid.at(x, y + 1)[0], stats.v, 'v', x, y)
+    return rows, counted, unchecked
 
 
 def prune_tendrils(comp, mat, material):
@@ -273,21 +396,169 @@ def empty(meta, grid, pair, cfg):
     return rows, counted
 
 
-def run(repo, query):
+def analyze(repo, query, cfg, snap, pair_rules_fn=pair_rules):
+    """Raw counts + WARN rows of every check. seams/rare are None when snap can't answer."""
     grid, pair = load(repo, query)
-    rules = pair_rules(repo, pair)
-    cfg = thresholds(repo)
+    rules = pair_rules_fn(repo, pair)
     mat = {(x, y): rules.material(grid.at(x, y)) for y in range(grid.h) for x in range(grid.w)}
-    meta = dict(cfg, mat=mat, marks=events(grid.data), rules=rules,
+    meta = dict(cfg, mat=mat, marks=events(grid.data), rules=rules, pair=pair,
                 map_type=grid.data.get('map_type'))
+    counts, warns, unchecked = {}, {}, {}
+    seam = seams(grid, pair, snap)
+    counts['seams'] = None if seam is None else len(seam[0])
+    warns['seams'] = seam[0] if seam else []
+    if seam:
+        unchecked.update(seam[1])
+    stair_rows, counts['stairs'] = stairs(meta, grid, cfg)
+    warns['stairs'] = stair_rows
+    rare_rows, rare_n, rare_unchecked = rare(meta, grid, cfg, snap)
+    counts['rare'], warns['rare'] = rare_n, rare_rows or []
+    if rare_unchecked:
+        for rid, n in rare_unchecked.items():
+            unchecked[rid] = unchecked.get(rid, 0) + n
+    rect_rows, counts['rects'] = rects(meta, grid, cfg)
+    warns['rects'] = rect_rows
+    empty_rows, counts['empty'] = empty(meta, grid, pair, cfg)
+    warns['empty'] = empty_rows
+    return grid, pair, counts, warns, unchecked
+
+
+def run(repo, query):
+    cfg = thresholds(repo)
+    snap = load_snapshot(repo)
+    grid, pair, counts, warns, unchecked = analyze(repo, query, cfg, snap)
+    stratum = stratum_of(grid.data.get('map_type'))
+    fired, unavailable = {}, []
+    for metric, value in counts.items():
+        if value is None:
+            unavailable.append(metric)
+            continue
+        threshold = metric_threshold(cfg['strata'], stratum, metric)
+        fired[metric] = threshold is not None and value > threshold
+    score = sum(1 for ok in fired.values() if ok)
     cap = cfg['max_lines']
-    seam_rows = seams(grid, rules)
-    stair_rows, stair_n = stairs(meta, grid, cfg)
-    rare_rows, rare_n = rare(meta, grid, cfg)
-    rect_rows, rect_n = rects(meta, grid, cfg)
-    empty_rows, empty_n = empty(meta, grid, pair, cfg)
-    counts = f'seams:{len(seam_rows)} stairs:{stair_n} rare:{rare_n} rects:{rect_n} empty:{empty_n}'
-    rows = sorted(seam_rows + stair_rows)[:cap] + rare_rows[:cap] + \
-        sorted(rect_rows, key=lambda r: r[9:])[:cap] + empty_rows[:cap]
-    return Result(f'lint {grid.name} {counts} '
-                  f'score:{len(seam_rows) + stair_n + rare_n + rect_n + empty_n}', rows)
+    rows = []
+    for metric in ('seams', 'stairs', 'rare', 'rects', 'empty'):
+        if fired.get(metric):
+            rows += sorted(warns[metric])[:cap]
+    infos = []
+    if 'seams' in unavailable or 'rare' in unavailable:
+        infos.append('INFO no snapshot; run pk map lint --snapshot')
+    infos += [f'INFO UNCHECKED 0x{rid:03X} x{n} (no socket)' for rid, n in sorted(unchecked.items())]
+    header = (f'lint {grid.name} stratum:{stratum} '
+              + ' '.join(f'{m}:{"-" if counts[m] is None else counts[m]}' for m in counts))
+    delta = ''
+    base = snap.maps.get(grid.name) if snap else None
+    if base is not None:
+        delta = f' (vanilla:{base["score"]}, {score - base["score"]:+d})'
+    summary = f'{header} score:{score}{delta}'
+    return Result(summary, infos + rows)
+
+
+# --- snapshot: the frozen vanilla adjacency statistics --------------------------------
+
+def stats(values):
+    values = sorted(values)
+    n = len(values)
+    if not n:
+        return dict(p50=0, p95=0, max=0, n=0)
+    pct = lambda p: values[min(n - 1, int(round(p * (n - 1))))]
+    return dict(p50=pct(0.5), p95=pct(0.95), max=values[-1], n=n)
+
+
+def build_pairs(repo):
+    """h/v/diagonal pair counts + known metatile ids per tileset pair, from vanilla layouts only."""
+    pairs = {}
+    for lid, layout in repo.layouts().items():
+        if lid.startswith(PK_LAYOUT):
+            continue
+        key = layout['primary_tileset'] + '+' + layout['secondary_tileset']
+        w, h = layout['width'], layout['height']
+        try:
+            cells = decode(repo.read(layout['blockdata_filepath'])[:w * h * 2])
+        except PkError:
+            continue
+        entry = pairs.setdefault(key, dict(layouts=0, metatiles=set(),
+                                           h={}, v={}, ne={}, nw={}, se={}, sw={}))
+        entry['layouts'] += 1
+        for y in range(h):
+            for x in range(w):
+                a = cells[y * w + x][0]
+                entry['metatiles'].add(a)
+                if x + 1 < w:
+                    k = f'{a},{cells[y * w + x + 1][0]}'
+                    entry['h'][k] = entry['h'].get(k, 0) + 1
+                if y + 1 < h:
+                    k = f'{a},{cells[(y + 1) * w + x][0]}'
+                    entry['v'][k] = entry['v'].get(k, 0) + 1
+                if x + 1 < w and y > 0:
+                    k = f'{a},{cells[(y - 1) * w + x + 1][0]}'
+                    entry['ne'][k] = entry['ne'].get(k, 0) + 1
+                if x > 0 and y > 0:
+                    k = f'{a},{cells[(y - 1) * w + x - 1][0]}'
+                    entry['nw'][k] = entry['nw'].get(k, 0) + 1
+                if x + 1 < w and y + 1 < h:
+                    k = f'{a},{cells[(y + 1) * w + x + 1][0]}'
+                    entry['se'][k] = entry['se'].get(k, 0) + 1
+                if x > 0 and y + 1 < h:
+                    k = f'{a},{cells[(y + 1) * w + x - 1][0]}'
+                    entry['sw'][k] = entry['sw'].get(k, 0) + 1
+    for entry in pairs.values():
+        entry['metatiles'] = sorted(entry['metatiles'])
+    return pairs
+
+
+def vanilla_outdoor(repo):
+    maps = repo.maps()
+    layouts = repo.layouts()
+    rows = []
+    for name, data in maps.items():
+        if name.startswith('Pk'):
+            continue
+        if data.get('map_type') not in OUTDOOR_TYPES:
+            continue
+        layout = layouts.get(data['layout'])
+        if layout is None or layout.get('layout_version') != 'frlg':
+            continue
+        rows.append((name, stratum_of(data.get('map_type'))))
+    return sorted(rows)
+
+
+def derive_strata(baselines):
+    strata = {name: {} for name in STRATUM_TYPES}
+    for metric in ('seams', 'stairs', 'rare', 'rects', 'empty'):
+        for name in STRATUM_TYPES:
+            values = [b['counts'][metric] for b in baselines
+                      if b['stratum'] == name and b['counts'][metric] is not None]
+            strata[name][metric] = stats(values)
+    return strata
+
+
+def build_snapshot(repo, tx):
+    cfg = thresholds(repo)
+    pairs = build_pairs(repo)
+    snap = Snap(dict(pairs=pairs, maps={}))
+    baselines = []
+    for name, stratum in vanilla_outdoor(repo):
+        _, _, counts, _, _ = analyze(repo, name, cfg, snap)
+        baselines.append(dict(name=name, stratum=stratum, counts=counts))
+    strata = derive_strata(baselines)
+    maps = {}
+    for base in baselines:
+        score = 0
+        for metric, value in base['counts'].items():
+            if value is None:
+                continue
+            threshold = metric_threshold(strata, base['stratum'], metric)
+            if threshold is not None and value > threshold:
+                score += 1
+        maps[base['name']] = dict(stratum=base['stratum'],
+                                  **{k: v for k, v in base['counts'].items()}, score=score)
+    doc = dict(version=SNAPSHOT_VERSION, pairs=pairs, maps=maps)
+    tx.stage(SNAPSHOT_JSON, (json.dumps(doc, sort_keys=True) + '\n').encode('utf-8'))
+    cfg['strata'] = strata
+    tx.stage(LINT_JSON, (json.dumps(cfg, indent=2, sort_keys=True) + '\n').encode('utf-8'))
+    nonzero = sum(1 for m in maps.values() if m['score'])
+    return Result(f'snapshot {SNAPSHOT_JSON} pairs:{len(pairs)} maps:{len(maps)} '
+                  f'nonzero:{nonzero}',
+                  [f'thresholds written to {LINT_JSON}'])

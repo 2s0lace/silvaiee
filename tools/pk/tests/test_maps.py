@@ -5,6 +5,7 @@ results are inspected in tx.writes and nothing is ever written to disk.
 """
 import json
 from pathlib import Path
+import re
 import sys
 import unittest
 
@@ -271,11 +272,19 @@ class Lint(unittest.TestCase):
 
     def test_seams_use_vanilla_adjacency(self):
         from pk.maps import lint
-        rules = lint.Rules.__new__(lint.Rules)             # shell without scanning the repo
-        rules.h = {(ord('a'), ord('b'))}
-        rules.v = {(ord('a'), ord('b'))}
+
+        class Snap:
+            class Stats:
+                h = {(ord('a'), ord('b'))}
+                v = {(ord('a'), ord('b'))}
+                metatiles = {ord('a'), ord('b')}
+
+            def pair(self, pair):
+                return self.Stats()
+
         grid = FakeGrid(['ab', 'ba'])
-        rows = lint.seams(grid, rules)
+        rows, unchecked = lint.seams(grid, FakePair(), Snap())
+        self.assertEqual(unchecked, {})
         self.assertEqual(rows, [f'WARN SEAM h 0x{ord("b"):03X}-0x{ord("a"):03X} @0,1',
                                 f'WARN SEAM v 0x{ord("b"):03X}-0x{ord("a"):03X} @1,0'])
 
@@ -365,26 +374,43 @@ class Lint(unittest.TestCase):
         self.assertEqual(lint.empty(dict(meta, mat=varied), grid, FakePair(), cfg), ([], 0),
                          'a material-entropy floor rescues a varied window')
 
-    def test_ugly_scores_above_vanilla(self):
-        """Calibration: every deliberately ugly map scores above every vanilla map, and the
-        benchmark maps with the worse human scores (Muse 1, Sonnet 2, DeepSeek 2.5) score
-        clearly worse than the best one (Opus 6)."""
+    def test_socketed_custom_metatile_checks_ground(self):
+        # A3: bench_v2_l/r carry socket=0x296 (meadow). On a meadow field every adjacency is
+        # vanilla-seen (0 SEAM); on deep water the bench<->water pair was never seen (>=1 SEAM).
         from pk.maps import lint
-        pool = ('PalletTown_Frlg', 'Route1_Frlg', 'Route2_Frlg', 'Route3_Frlg', 'Route9_Frlg',
-                'LavenderTown_Frlg', 'ViridianForest_Frlg', 'IndigoPlateau_Exterior_Frlg',
-                'SixIsland_PatternBush_Frlg', 'MtEmber_Exterior_Frlg')
-        ugly = ('PkLintRect_Frlg', 'PkLintStraight_Frlg', 'PkLintStairs_Frlg', 'PkLintSeam_Frlg',
-                'PkLintEmpty_Frlg', 'PkPalletMuse_Frlg', 'PkPalletSonnet_Frlg', 'PkPalletDeepSeek_Frlg')
-        score = lambda name: int(lint.run(self.repo, name).summary.split('score:')[1])
-        vanilla = sorted(pool, key=score)[:5]            # the 5 cleanest vanilla maps
+        bench = (0x2E2, 0x2E3)
+        results = {}
+        for label, ground in (('grass', 0x296), ('water', 0x12B)):
+            tx = Transaction(Repo(ROOT), 'test')
+            repo = Repo(ROOT, tx)
+            grid, _ = edit.load(repo, 'PkSandbox_Frlg')
+            for y in range(grid.h):
+                for x in range(grid.w):
+                    grid.set(x, y, (ground, 0, 0))
+            grid.set(grid.w // 2, grid.h // 2, (bench[0], 1, 0))
+            grid.set(grid.w // 2 + 1, grid.h // 2, (bench[1], 1, 0))
+            edit.save(tx, grid)
+            results[label] = int(re.search(r'seams:(\d+)', lint.run(repo, 'PkSandbox_Frlg').summary)[1])
+        self.assertEqual(results['grass'], 0, results)
+        self.assertGreaterEqual(results['water'], 1, results)
+
+    def test_lint_part_a_calibration(self):
+        """Part A: 0 SEAM on every vanilla outdoor map, all vanilla score 0, and every fixture /
+        benchmark with a human score <=4 scores strictly above the vanilla max (0)."""
+        from pk.maps import lint
+        repo = self.repo
+        summary = lambda name: lint.run(repo, name).summary
+        score = lambda name: int(re.search(r'score:(\d+)', summary(name))[1])
+        vanilla = [name for name, _ in lint.vanilla_outdoor(repo)]
+        self.assertEqual(len(vanilla), 72)
         for name in vanilla:
-            self.assertLessEqual(score(name), 1, f'{name} should be near 0')
-        vanilla_max = max(score(name) for name in vanilla)
-        for name in ugly:
-            self.assertGreater(score(name), vanilla_max, f'{name} should beat vanilla')
-        opus = score('PkPalletOpus_Frlg')
-        for name in ('PkPalletMuse_Frlg', 'PkPalletSonnet_Frlg', 'PkPalletDeepSeek_Frlg'):
-            self.assertGreater(score(name), opus, f'{name} should beat Opus ({opus})')
+            self.assertIn('seams:0', summary(name), name)
+            self.assertEqual(score(name), 0, name)
+        best = ('PkLintRect_Frlg', 'PkLintStraight_Frlg', 'PkLintStairs_Frlg', 'PkLintSeam_Frlg',
+                'PkLintEmpty_Frlg', 'PkPalletMuse_Frlg', 'PkPalletSonnet_Frlg',
+                'PkPalletDeepSeek_Frlg', 'PkPalletSol_Frlg')
+        for name in best:
+            self.assertGreater(score(name), 0, name)
 
 
 if __name__ == '__main__':

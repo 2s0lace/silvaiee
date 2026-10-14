@@ -479,12 +479,14 @@
  },
  "2E2": {
   "name": "bench_v2_l",
+  "socket": 662,
   "tags": [
    "bench"
   ]
  },
  "2E3": {
   "name": "bench_v2_r",
+  "socket": 662,
   "tags": [
    "bench"
   ]

@@ -88,7 +88,7 @@ def dispatch(repo, tx, argv):
         args, opts = options(tail, values=('offset', 'limit', 'rect', 'layer', 'from', 'coll', 'elev', 'add', 'to',
                                            'anchor', 'fill', 'size', 'tilesets', 'type', 'like', 'music', 'group', 'out', 'scale',
                                            'into'),
-                             flags=('exact', 'no-events', 'fork-layout', 'drop-out-of-bounds', 'stamps'))
+                             flags=('exact', 'no-events', 'fork-layout', 'drop-out-of-bounds', 'stamps', 'snapshot'))
         if args and args[0] == 'paintover' and len(args) == 3:
             result = map_paintover.command(repo, tx, args, opts)
         elif args and args[0] == 'resize' and len(args) == 2:
@@ -99,8 +99,13 @@ def dispatch(repo, tx, argv):
             result = map_create.new_map(repo, tx, args[1], opts)
         elif args and args[0] == 'ls' and len(args) <= 2:
             result = listing(repo, args[1] if len(args) == 2 else '', *pagination(opts))
-        elif args and args[0] == 'lint' and len(args) == 2:
-            result = map_lint.run(repo, args[1])
+        elif args and args[0] == 'lint':
+            if opts.get('snapshot') and len(args) == 1:
+                result = map_lint.build_snapshot(repo, tx)
+            elif len(args) == 2:
+                result = map_lint.run(repo, args[1])
+            else:
+                raise PkError('PARSE', 'usage: pk map lint MAP | pk map lint --snapshot')
         elif args and args[0] == 'export' and len(args) == 2:
             result = map_export.export_map(repo, tx, args[1], opts)
         elif args and args[0] == 'import' and len(args) == 3:

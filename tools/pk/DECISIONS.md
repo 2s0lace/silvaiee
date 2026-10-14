@@ -642,3 +642,59 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - Effect on the fixtures (same harness as A0): PkLintStairs stairs 2->1, PkLintStraight empty 1->0,
   PkLintSeam now 0 (its signal moves to SEAM/RARE once the snapshot lands in A2). Vanilla unchanged.
 - Full suite (A0+A1 files): the four new tests pass; the old calibration test is rewritten in A4.
+
+## Maintainer round 2 — step A2: frozen vanilla snapshot (2026-10-14)
+- New `pk/maps/lint.py` snapshot: `pk map lint --snapshot` is the only writer of
+  `tools/pk/data/vanilla_adjacency.json`. It stores, per tileset pair (`gTileset_Primary+gTileset_Secondary`),
+  the layout count, the known vanilla metatile ids and the h/v/ne/nw/se/sw pair counts, plus per vanilla
+  outdoor map its raw metrics and score (delta mode). Layout ids starting `LAYOUT_PK_` are never read.
+  `SEAM` and `RARE` read the snapshot and never live `terrain.Rules`; if the file is missing they print
+  `INFO no snapshot; run pk map lint --snapshot` and the check is skipped (never 0 silently).
+- **Vanilla is pristine.** The pk journal (`.pk/journal/*/manifest.json`, 597 entries) shows only four
+  non-`Pk*` files ever written: `data/layouts/PalletTown_Frlg/map.bin`, `data/maps/PalletTown_Frlg/map.json`
+  (both undone to their original sha256) and `data/maps/PalletTown_Frlg/{events,scripts}.inc` (a `pk build`
+  artifact and the round-1 step-0 manual removal; neither is a layout block used by lint). Every non-`Pk`
+  `data/layouts/*/map.bin` and `border.bin` (1606 files) is byte-identical (git blob sha1) to the official
+  `rh-hideout/pokeemerald-expansion` tag `expansion/1.17.1`; the 40 mismatches are all `Pk*` layouts absent
+  from the release. Nothing was frozen from a modified map.
+- Effect: vanilla SEAM is 0 on 100% of the 72 outdoor maps (the map is in the snapshot, so it can no
+  longer grade itself), and RARE drops to 0 for vanilla once normalised (A4).
+
+## Maintainer round 2 — step A3: sockets for custom metatiles (2026-10-14)
+- `.pkt` entries accept `socket=0xNNN`; `pk tileset build` stores it as `"socket"` in
+  `tools/pk/data/metatiles/<symbol>.json`. When no socket is declared, `build` auto-infers one: the bottom
+  layer (slots 0-3, global flips allowed) of a new metatile is matched pixel-exactly against every metatile
+  of the pair on disk; a match becomes the socket. A manual `socket=` always wins.
+- `SEAM`/`RARE` replace a socketed id with its socket before the pair lookup. An id that is neither in the
+  snapshot nor socketed is not scored: the report gets `INFO UNCHECKED 0xNNN xK (no socket)`.
+- The two bench metatiles (`bench_v2_l/r`, 0x2E2/0x2E3) declare `socket=0x296` (the PalletTown meadow). With
+  a transaction filling PkSandbox_Frlg with 0x296 and placing the bench, lint reports `seams:0`; the same
+  bench over 0x12B (deep water, never adjacent to 0x296 in vanilla) reports `seams:6`. Committed as
+  `test_maps.Lint.test_socketed_custom_metatile_checks_ground`.
+
+## Maintainer round 2 — step A4: measured strata, score by fired checks (2026-10-14)
+- The snapshot build measures every metric over all 72 vanilla FRLG outdoor maps and writes p50/p95/max/n
+  per stratum into `tools/pk/data/lint_map.json` (`strata`), replacing the flat `rare_max`.
+  `RARE` is normalised by `rules.layouts`: a natural boundary is rare when its snapshot count is at most
+  `rare_rate * layouts` (`rare_rate = 0.05`).
+- A check fires only when its raw count exceeds the stratum p95, or the max when the stratum has fewer than
+  20 maps: `town` n=19 (max), `route` n=53 (p95), `ocean` n=0 (none in this data set). `score` is the number
+  of checks that fired; no allowance is subtracted.
+- Vanilla (all 72): 100% score 0 (town uses maxima, so nothing exceeds; all route metrics p95=0). The five
+  `PkLint*` fixtures score 1-3 and Muse/Sonnet/DeepSeek/Sol score 2, all strictly above the vanilla max.
+- Delta mode prints `(vanilla:B, +D)` for an edited vanilla map (e.g. PalletTown `score:0 (vanilla:0, +0)`).
+- **Ranking target MISSED:** Muse, Sonnet, DeepSeek and Sol all score 2 (SEAM and RARE both fire; none
+  crosses the town stairs max of 9). DeepSeek has the most novel shore pairs (112 SEAM / 88 RARE), so it is
+  the worst on any adjacency count and cannot rank below Muse (69/53) or Sonnet (40/25) without overfitting.
+
+## Maintainer round 2 — step A5: honest asset preview (2026-10-14)
+- `pk tileset preview` now renders 4 columns per piece: the full piece on a checker, then the TOP layer only
+  over ground, sand and water. The bottom layer (often a ground) no longer paints over the sand/water
+  backgrounds it is judged on. Output line `columns: full ground sand water`.
+
+## Maintainer round 2 — step A4b/final state (2026-10-14)
+- Full suite: **121 tests, 0 failures**, 751 s. AGENT.md is 38 lines and `pk help` still equals it.
+- Part A targets: 0 SEAM on 100% vanilla (PASS); >=85% vanilla score 0 and none above 2 (PASS: 100% / max 0);
+  every fixture and the <=4 benchmarks score above the vanilla max (PASS); Muse/Sonnet > DeepSeek > Opus
+  (FAIL, all 2); bench on grass 0 SEAM / on water >=1 (PASS); suite green (PASS). The README note therefore
+  stays "experimental and not yet calibrated".

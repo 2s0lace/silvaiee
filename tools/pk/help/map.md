@@ -13,14 +13,20 @@ More than 10% exceptions: full grid for that layer. Ties use the lower value; el
 Parse symbol=value from the right (counter symbol: ==0); split the header at "; exceptions ".
 pk map lint MAP (read-only; thresholds in tools/pk/data/lint_map.json; 0 is clean)
  map lint is experimental and not yet calibrated on all vanilla maps.
- RARE: a shore (water/sand) boundary whose metatile pair occurs <= rare_max times in vanilla.
- WARN SEAM h|v 0x123-0x2A3 @x,y: adjacent metatiles never seen in vanilla layouts of this tileset pair (terrain.Rules).
+ pk map lint --snapshot: the only writer of tools/pk/data/vanilla_adjacency.json; it freezes the
+  vanilla h/v/diagonal pair counts + known metatiles per tileset pair and re-measures the per-stratum
+  thresholds. SEAM/RARE read that snapshot, never live files, and skip with INFO when it is missing.
+ RARE: a shore (water/sand) boundary whose metatile pair occurs <= rare_rate * layouts times in the snapshot.
+ WARN SEAM h|v 0x123-0x2A3 @x,y: adjacent metatiles never seen in the vanilla snapshot of this pair.
+  WARN SEAM for a custom metatile prints INFO UNCHECKED 0xNNN xK (no socket) unless it declares a
+  socket (socket=0xNNN in the .pkt, or auto-inferred at build); SEAM/RARE then test the socket.
  WARN STAIR pair span run:n: a straight natural edge longer than straight_max (towns/cities only).
  WARN STAIR pair span steps:n: stair_min_steps equal runs joining with a constant one-tile shift.
  WARN STAIR pair span dash:n: equal natural runs gapped on one line (towns/cities only; catches broken shore bands).
- WARN RECT material x,y-WxH fill%: a natural component (>=rect_min x rect_min) filling rect_fill of its bbox; border-pinned ones are skipped.
- WARN EMPTY x,y-WxH: a 15x10 clean-ground interior window with no decor tags, no events (towns/cities only).
- Summary: lint MAP seams:N stairs:N rects:N empty:N score:N. Materials = class view or first tag of a named metatile.
+ WARN RECT material x,y-WxH fill%: a natural component (>=rect_min x rect_min) filling rect_fill of its bbox; tendrils are pruned and a border-pinned one is skipped only if >=rect_min cells sit on the border.
+ WARN EMPTY x,y-WxH: a 15x10 interior window with <2 decor/event cells and material entropy below empty_entropy (towns/cities only).
+ Summary: lint MAP stratum:S seams:N stairs:N rare:N rects:N empty:N score:S (vanilla:B, +D). A check
+  fires (and counts +1) only above the p95 of its stratum, or the max when the stratum has <20 maps.
 pk map render MAP [--rect x,y,WxH] [--scale n] [--out path.png] (default .pk/render/MAP.png)
 pk map at MAP x,y -> metatile, name, collision, elevation, behavior, layer, tileset
 pk map paint MAP x,y[,WxH] METATILE [--coll n] [--elev n]

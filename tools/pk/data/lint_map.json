@@ -1,14 +1,144 @@
-{ "natural": ["water", "sand", "grass", "tall_grass"],
-  "rare_mats": ["water", "sand"],
-  "rare_max": 1,
-  "decor_tags": ["tree", "flowers", "fence", "sign"],
-  "stair_min_steps": 4, "stair_min_run": 2,
+{
+  "dash_min_gap": 6,
+  "dash_min_run": 4,
+  "dash_types": [
+    "MAP_TYPE_TOWN",
+    "MAP_TYPE_CITY"
+  ],
+  "decor_tags": [
+    "tree",
+    "flowers",
+    "fence",
+    "sign"
+  ],
+  "empty_entropy": 0.3,
+  "empty_h": 10,
+  "empty_margin": 2,
+  "empty_solid": true,
+  "empty_types": [
+    "MAP_TYPE_TOWN",
+    "MAP_TYPE_CITY"
+  ],
+  "empty_w": 15,
+  "empty_water_frac": 0.3,
+  "max_lines": 12,
+  "natural": [
+    "water",
+    "sand",
+    "grass",
+    "tall_grass"
+  ],
+  "rare_mats": [
+    "water",
+    "sand"
+  ],
+  "rare_rate": 0.05,
+  "rect_border": true,
+  "rect_fill": 1.0,
+  "rect_min": 8,
+  "stair_min_run": 2,
+  "stair_min_steps": 4,
   "straight_max": 16,
-  "straight_types": ["MAP_TYPE_TOWN", "MAP_TYPE_CITY"],
-  "dash_min_run": 4, "dash_min_gap": 6,
-  "dash_types": ["MAP_TYPE_TOWN", "MAP_TYPE_CITY"],
-  "rect_min": 8, "rect_fill": 1.0, "rect_border": true,
-  "empty_w": 15, "empty_h": 10, "empty_margin": 2,
-  "empty_types": ["MAP_TYPE_TOWN", "MAP_TYPE_CITY"],
-  "empty_solid": true, "empty_water_frac": 0.3, "empty_entropy": 0.3,
-  "max_lines": 12 }
+  "straight_types": [
+    "MAP_TYPE_TOWN",
+    "MAP_TYPE_CITY"
+  ],
+  "strata": {
+    "ocean": {
+      "empty": {
+        "max": 0,
+        "n": 0,
+        "p50": 0,
+        "p95": 0
+      },
+      "rare": {
+        "max": 0,
+        "n": 0,
+        "p50": 0,
+        "p95": 0
+      },
+      "rects": {
+        "max": 0,
+        "n": 0,
+        "p50": 0,
+        "p95": 0
+      },
+      "seams": {
+        "max": 0,
+        "n": 0,
+        "p50": 0,
+        "p95": 0
+      },
+      "stairs": {
+        "max": 0,
+        "n": 0,
+        "p50": 0,
+        "p95": 0
+      }
+    },
+    "route": {
+      "empty": {
+        "max": 0,
+        "n": 53,
+        "p50": 0,
+        "p95": 0
+      },
+      "rare": {
+        "max": 0,
+        "n": 53,
+        "p50": 0,
+        "p95": 0
+      },
+      "rects": {
+        "max": 0,
+        "n": 53,
+        "p50": 0,
+        "p95": 0
+      },
+      "seams": {
+        "max": 0,
+        "n": 53,
+        "p50": 0,
+        "p95": 0
+      },
+      "stairs": {
+        "max": 0,
+        "n": 53,
+        "p50": 0,
+        "p95": 0
+      }
+    },
+    "town": {
+      "empty": {
+        "max": 0,
+        "n": 19,
+        "p50": 0,
+        "p95": 0
+      },
+      "rare": {
+        "max": 0,
+        "n": 19,
+        "p50": 0,
+        "p95": 0
+      },
+      "rects": {
+        "max": 0,
+        "n": 19,
+        "p50": 0,
+        "p95": 0
+      },
+      "seams": {
+        "max": 0,
+        "n": 19,
+        "p50": 0,
+        "p95": 0
+      },
+      "stairs": {
+        "max": 9,
+        "n": 19,
+        "p50": 1,
+        "p95": 6
+      }
+    }
+  }
+}

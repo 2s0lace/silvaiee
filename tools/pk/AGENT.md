@@ -12,6 +12,7 @@ pk refs EXACT_LABEL_OR_CONSTANT
 pk map ls [filter] | pk map info MAP
 pk map show MAP [--rect x,y,WxH] [--exact] [--layer coll|elev|all] [--stamps] (help map: symbols)
 pk map lint MAP (ugliness score: seams stairs rare rects empty; 0 is clean)
+pk map lint --snapshot (freeze vanilla adjacency + re-measure strata; only writer of the snapshot)
 pk map render MAP [--rect] [--scale 1] [--out file.png] (real graphics, for vision)
 pk map at MAP x,y | pk map paint MAP x,y[,WxH] METATILE | fill | line | grid | copy | border
 pk map paintover MAP IMAGE [--into NEW_MAP] (real metatiles back from a painted image; matching cells frozen)

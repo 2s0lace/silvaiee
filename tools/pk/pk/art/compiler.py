@@ -36,6 +36,45 @@ def camel(name):
     return ''.join(p.capitalize() for p in re.split(r'[_\W]+', name) if p)
 
 
+def bottom_image(quads):
+    """The 16x16 bottom layer of a metatile (render order: (0,0),(0,8),(8,0),(8,8))."""
+    img = [[None] * 16 for _ in range(16)]
+    for n, q in enumerate(quads[:4]):
+        ox, oy = (n % 2) * 8, (n // 2) * 8
+        for j in range(8):
+            for i in range(8):
+                img[oy + j][ox + i] = q[j][i]
+    return tuple(tuple(row) for row in img)
+
+
+def _flipped(img, hf, vf):
+    rows = [row[::-1] if hf else row for row in img]
+    return tuple(tuple(row) for row in (rows[::-1] if vf else rows))
+
+
+def socket_match(quads, references):
+    """The vanilla metatile id whose bottom layer pixel-equals this one (global flips allowed)."""
+    img = bottom_image(quads)
+    for mt, ref in references:
+        for hf, vf in ((0, 0), (1, 0), (0, 1), (1, 1)):
+            if _flipped(img, hf, vf) == ref:
+                return mt
+    return None
+
+
+def reference_bottoms(repo, spec):
+    """[(metatile id, bottom 16x16)] of the pair on disk, or None when it is not registered yet."""
+    from ..maps.meta import pair_for, all_ids, draw
+    if spec.meta['kind'] != 'secondary' or not spec.meta.get('pair_with'):
+        return None
+    try:
+        pair = pair_for(repo, f"{spec.meta['pair_with']},{spec.symbol}")
+    except PkError:
+        return None
+    return [(mt, tuple(tuple(row) for row in draw(repo, pair, mt, only={0, 1, 2, 3})))
+            for mt in sorted(all_ids(pair))]
+
+
 class Spec:
     def __init__(self, repo, path):
         self.path = path
@@ -66,6 +105,7 @@ class Spec:
             self.entries.append(dict(name=name, file=m[1], x=int(m[2] or 0), y=int(m[3] or 0),
                                      behavior=behavior, layer=layer, line=n,
                                      tags=[t for t in opts.get('tags', '').split(',') if t], sym=opts.get('sym'),
+                                     socket=int(opts['socket'], 0) if 'socket' in opts else None,
                                      attr=int(opts['attr'], 0) if 'attr' in opts else None))
         if 'name' not in self.meta:
             raise PkError('PARSE', f'{path}: missing "name <tileset>"')
@@ -268,6 +308,7 @@ def build(repo, tx, spec_path, opts):
     except PkError:
         old_names = {}
     names = {}
+    refs = reference_bottoms(repo, spec)
     for e in spec.entries:
         key = f"{meta_base + ids[e['name']]:03X}"
         old = old_names.get(key, {})
@@ -279,6 +320,12 @@ def build(repo, tx, spec_path, opts):
         entry.setdefault('tags', [])
         if e['sym']:
             entry['sym'] = e['sym']
+        sock = e.get('socket')
+        if sock is None and e.get('attr') is None and refs is not None:
+            own = meta_base + ids[e['name']]
+            sock = socket_match(metas[e['name']], [(mt, ref) for mt, ref in refs if mt != own])
+        if sock is not None:
+            entry['socket'] = sock
         names[key] = entry
     tx.stage(f'tools/pk/data/metatiles/{spec.symbol}.json', (json.dumps(names, indent=1, sort_keys=True) + '\n').encode('utf-8'))
     # 6. C registration (idempotent).
