@@ -19,3 +19,9 @@ vanilla: keep all | move REF @x,y | set REF move=.. gfx=.. range=.. | remove REF
 texts: Label: "plain text" | connections: up MAP_X offset=n|auto | header music=.. weather=.. type=..
 Policy (tools/pk/data/policy.json): items and declare var are rejected; quests postponed.
 Ids are stable: NPCs get LOCALID_BP_<MAP>_<ID>, scripts <Map>_EventScript_BP_<id>; removed ids are pruned.
+
+Terrain kitbash steps:
+  copy SRC_MAP x,y,WxH @tx,ty
+  auto x,y,WxH
+All material brushes run first; copy/auto then run in file order. Copy always repairs the seam.
+Check validates source maps, both bounds and portability through the map copy implementation.

@@ -30,7 +30,7 @@ def kv(items, where):
 
 
 def parse(text, path='blueprint'):
-    bp = dict(path=path, header={}, sections={s: [] for s in SECTIONS})
+    bp = dict(path=path, header={}, sections={s: [] for s in SECTIONS}, kitbash=[])
     section = None
     lines = text.splitlines()
     i = 0
@@ -83,7 +83,16 @@ def parse(text, path='blueprint'):
             bp['sections'][section].append((n, raw[2:] if raw.startswith('  ') else raw))
             continue
         comment_free = re.sub(r'\s+#(?![0-9A-Fa-f]{6}\b).*$', '', body)   # keep #rrggbb, drop comments
-        bp['sections'][section].append((n, words(comment_free, where)))
+        tokens = words(comment_free, where)
+        if section == 'terrain' and tokens and tokens[0] in ('copy', 'auto'):
+            box_pattern = r'\d+,\d+,[1-9]\d*x[1-9]\d*'
+            if tokens[0] == 'copy':
+                if len(tokens) != 4 or not re.fullmatch(box_pattern, tokens[2]) or not re.fullmatch(r'@\d+,\d+', tokens[3]):
+                    raise PkError('PARSE', f'{where}: copy SRC_MAP x,y,WxH @tx,ty')
+            elif len(tokens) != 2 or not re.fullmatch(box_pattern, tokens[1]):
+                raise PkError('PARSE', f'{where}: auto x,y,WxH')
+            bp['kitbash'].append((n, tokens))
+        bp['sections'][section].append((n, tokens))
     if 'map' not in bp:
         raise PkError('PARSE', f'{path}: first line must be "blueprint <MapName> v<N>"')
     return bp

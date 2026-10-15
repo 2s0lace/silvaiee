@@ -271,7 +271,7 @@ def run(repo, tx, path, mode, opts):
     tx.stage(f'data/maps/{name}/map.json', doc.emit())
     # 3. terrain -----------------------------------------------------------------------------
     grid, pair = load(repo, name)
-    rules = Rules(repo, pair)
+    rules = Rules(repo, pair, include_pk=False)
     keep, targets, forests = set(), {}, []
 
     def paint(cells, mat):
@@ -284,6 +284,8 @@ def run(repo, tx, path, mode, opts):
         if not w:
             continue
         verb = w[0]
+        if verb in ('copy', 'auto'):
+            continue
         heightish = [x for x in w if re.fullmatch(r'h=?\d', x)]
         if heightish:
             warns.append(f'{where}: heights are not modelled (DECISIONS 4b); "{heightish[0]}" ignored')
@@ -356,6 +358,20 @@ def run(repo, tx, path, mode, opts):
         r = terrain_apply(repo, tx, grid, pair, rules, targets, 'blueprint', frozen=stamped | keep | footprint)
         ops.append(r.summary)
         warns += [x[5:] for x in r.data if x.startswith('WARN ')]
+    # Kitbash operations follow every material brush, in their original file order.
+    from ..maps import edit as map_edit, terrain as map_terrain
+    for n, words in bp['kitbash']:
+        try:
+            if words[0] == 'copy':
+                r = map_edit.command(repo, tx, ['copy', name, words[2], words[3][1:]],
+                                     {'from': words[1], 'repair': True})
+            else:
+                r = map_terrain.auto(repo, tx, name, words[1])
+        except PkError as exc:
+            raise PkError(exc.code, f'{path}:{n}: {exc}') from None
+        ops.append(r.summary)
+        warns += [x[5:] for x in r.data if x.startswith('WARN ')]
+        ops += [x for x in r.data if x.startswith('INFO ')]
     # 4. structures --------------------------------------------------------------------------
     occupied = {}
     for e in entities(bp, 'structures'):

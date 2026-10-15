@@ -884,3 +884,7 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - --annotate uses lint.run(..., show_all=True); rulers give absolute coordinates on every edge. All WARN types get colored boxes and @x,y labels; viewport exclusions print INFO. Compare renders annotate both maps.
 - `C:/Python314/python.exe -B -m unittest discover -s tools/pk/tests -p test_round3.py -k AnnotationTest -v`: 2 tests pass; Muse draws 122 boxes for 122 WARN rows (actual Pillow rectangle calls counted).
 - `C:/Python314/python.exe -B tools/pk/pk.py map render PkPalletMuse_Frlg --annotate --out .pk/render/round3_annotated.png`: 122 boxes; inspected rendered PNG.
+
+## Round 3 step 3: blueprint kitbash operations
+- Terrain accepts copy SRC_MAP x,y,WxH @tx,ty and auto x,y,WxH. The parser rejects malformed syntax; apply/check execute shared map operations after all material brushes in file order, with copy --repair. Sources, boxes and portability are validated by these operations. Terrain rules exclude Pk references.
+- `C:/Python314/python.exe -B -m unittest discover -s tools/pk/tests -p test_round3.py -k BlueprintKitbashTest -v`: 3 tests pass. Actual apply ran on an in-memory PkR3 copy with errors=0 and order copy,auto; disk_maps_written=0. Invalid source, source/target bounds, nonportable secondary tiles, auto bounds and malformed syntax are refused. Fixture: tests/round3_kitbash.bp.

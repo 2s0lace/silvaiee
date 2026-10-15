@@ -14,6 +14,9 @@ from pk.maps.paintover import copy_map
 from pk.core.errors import PkError
 from pk.maps import lint
 from unittest import mock
+from pk.bp import apply as bp_apply
+from pk.bp.parse import parse
+from pk.maps import terrain
 
 
 class MemoryRepo(Repo):
@@ -128,6 +131,60 @@ class AnnotationTest(unittest.TestCase):
         self.assertEqual(count, 0)
         self.assertTrue(all(line.startswith('INFO') for line in notes))
         self.assertEqual(len(notes), len(rows))
+
+
+class BlueprintKitbashTest(unittest.TestCase):
+    def setUp(self):
+        self.tx = Transaction(Repo(ROOT), 'round3 blueprint')
+        self.repo = MemoryRepo(ROOT, self.tx)
+        copy_map(self.repo, self.tx, 'PalletTown_Frlg', 'PkR3Blueprint_Frlg')
+        baseline_tx = Transaction(Repo(ROOT), 'round3 baseline')
+        baseline_tx.writes.update(self.tx.writes)
+        self.baseline = MemoryRepo(ROOT, baseline_tx)
+
+    def test_apply_is_in_memory_and_steps_keep_file_order(self):
+        calls = []
+        original_copy, original_auto = edit.command, terrain.auto
+
+        def copy(*args, **kwargs):
+            calls.append(('copy', args[3]))
+            return original_copy(*args, **kwargs)
+
+        def auto(*args, **kwargs):
+            calls.append(('auto', args[3]))
+            return original_auto(*args, **kwargs)
+
+        with mock.patch.object(bp_apply, 'Repo', return_value=self.baseline), \
+             mock.patch.object(edit, 'command', side_effect=copy), \
+             mock.patch.object(terrain, 'auto', side_effect=auto):
+            result = bp_apply.run(self.repo, self.tx, 'tools/pk/tests/round3_kitbash.bp', 'apply', {})
+        self.assertTrue(result.ok)
+        self.assertEqual([c[0] for c in calls], ['copy', 'auto'])
+        self.assertTrue(calls[0][1]['repair'])
+        self.assertFalse((ROOT / 'data/maps/PkR3Blueprint_Frlg').exists())
+        print('BLUEPRINT apply errors=0 order=copy,auto disk_maps_written=0', flush=True)
+
+    def test_check_rejects_invalid_sources_bounds_and_portability(self):
+        source, pair = edit.load(self.repo, 'CeruleanCity_Frlg')
+        x, y = next((x, y) for y in range(source.h) for x in range(source.w)
+                    if source.at(x, y)[0] >= pair.limits['metatiles'])
+        for step, code in [('copy MissingSource 0,0,2x2 @0,0', 'NOTFOUND'),
+                           ('copy PalletTown_Frlg 999,0,2x2 @0,0', 'BOUNDS'),
+                           ('copy PalletTown_Frlg 0,0,2x2 @999,0', 'BOUNDS'),
+                           (f'copy CeruleanCity_Frlg {x},{y},1x1 @0,0', 'CONFLICT'),
+                           ('auto 999,0,2x2', 'BOUNDS')]:
+            with self.subTest(step=step):
+                self.tx.stage('tools/pk/tests/round3_invalid.bp',
+                              f'blueprint PkR3Blueprint_Frlg v1\nterrain\n  {step}\n'.encode())
+                with mock.patch.object(bp_apply, 'Repo', return_value=self.baseline):
+                    with self.assertRaises(PkError) as caught:
+                        bp_apply.run(self.repo, self.tx, 'tools/pk/tests/round3_invalid.bp', 'check', {})
+                self.assertEqual(caught.exception.code, code)
+
+    def test_parser_rejects_malformed_kitbash_steps(self):
+        for step in ['copy Foo 0,0,2x2 1,1', 'copy Foo 0,0,0x2 @1,1', 'auto 0,0', 'auto 0,0,2x2 extra']:
+            with self.assertRaises(PkError):
+                parse(f'blueprint PkR3Blueprint_Frlg v1\nterrain\n  {step}')
 
 
 if __name__ == '__main__':
