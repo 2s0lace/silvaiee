@@ -100,5 +100,20 @@ class ReachWriteTest(MapTest):
         self.assertEqual(no_ent.data[-1], 'INFO reach: not checked (no entrance)')
 
 
+class RepeatLintTest(MapTest):
+    def test_repeat_finds_non_overlapping_mixed_4x4_blocks_and_is_info_only(self):
+        from pk.maps import lint
+        res = lint.run(self.repo, 'PkPalletSolV2_Frlg', show_all=True)
+        repeats = [r for r in res.data if r.startswith('INFO REPEAT ')]
+        self.assertEqual(repeats, [
+            'INFO REPEAT 0,24 8,24 16,24 4x4',
+            'INFO REPEAT 1,24 9,24 17,24 4x4',
+            'INFO REPEAT 2,24 10,24 18,24 4x4',
+        ])
+        # Uniform 4x4 blocks (single physical class) do not trigger INFO REPEAT.
+        pal = lint.run(self.repo, 'PalletTown_Frlg', show_all=True)
+        self.assertEqual([r for r in pal.data if r.startswith('INFO REPEAT ')], [])
+
+
 if __name__ == '__main__':
     unittest.main()

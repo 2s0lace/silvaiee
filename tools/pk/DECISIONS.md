@@ -907,3 +907,10 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - Measured cases (`C:/Python314/python.exe -B -m unittest discover -s tools/pk/tests -p test_terrain_auto.py -v`, 7 tests pass):
   - Triggering: `Route21_North_Frlg 4,28,6x4 -> PalletTown_Frlg 6,15` changes `15 of 16` rim cells (93.8%) and emits `WARN repair changed 15 of 16 rim cells; the piece may not fit here`.
   - Non-triggering: `Route21_North_Frlg 11,1,4x2 -> PalletTown_Frlg 14,17` changes `1 of 8` rim cells (12.5%) and emits no repair warning.
+
+## Round 4 step 3: INFO REPEAT in lint and aiceus
+- `lint.repeats(grid, pair)` finds 4x4 metatile blocks that contain at least 2 distinct physical classes (`lint.physical_class`) and appear 3 or more times without overlapping (`abs(x - cx) >= 4 or abs(y - cy) >= 4`), emitting one `INFO REPEAT x,y x,y x,y ... 4x4` row per repeated block. Info only: score and severity are unchanged.
+- Measured over all 72 vanilla outdoor maps and the 11 `PkPallet*` benchmark maps (`C:/Python314/python.exe -B -c "import sys; sys.path.insert(0, 'tools/pk'); from pk.core.repo import Repo; from pk.maps import edit, lint; r=Repo('.'); v=[len(lint.repeats(*edit.load(r, n))) for n, _ in lint.vanilla_outdoor(r)]; p11=['PkPalletAstra_Frlg','PkPalletDeepSeek_Frlg','PkPalletGemini_Frlg','PkPalletMuse_Frlg','PkPalletOpus_Frlg','PkPalletSol_Frlg','PkPalletSonnet_Frlg','PkPalletSonnetV2_Frlg','PkPalletDeepSeekV2_Frlg','PkPalletSolV2_Frlg','PkPalletGeminiV2_Frlg']; pk_counts={m: len(lint.repeats(*edit.load(r, m))) for m in p11}; print('vanilla_maps:', len(v), 'vanilla_nonzero:', sum(1 for c in v if c), 'vanilla_total:', sum(v)); print('pkpallet11_total:', sum(pk_counts.values()), pk_counts)"`):
+  - Vanilla outdoor (72 maps): **1114** `INFO REPEAT` rows across **53** maps.
+  - `PkPallet*` (11 maps): **5** `INFO REPEAT` rows total (`PkPalletSolV2_Frlg`: 3, `PkPalletDeepSeekV2_Frlg`: 2; all other 9 maps: 0).
+- `aiceus/server.py` (`parse_lint_line`, plus `HIT_RE` updated for `portable:true|false`) and `aiceus/index.html` (`CHECKS`, `--REPEAT`) parse and display `REPEAT` as a 4x4 box (`tests/test_aiceus.py`, 11 tests pass).

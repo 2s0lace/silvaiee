@@ -85,3 +85,4 @@ pk map export MAP [--out file] (default .pk/map/MAP.map): the whole map as text.
  INFO SHAPE x,y pattern: physical 3x3 class pattern absent from the frozen v4 vocabulary.
  Vanilla keeps its vocabulary (no leave-one-out), so untouched regions remain quiet. Pk drafts never contribute reference counts.
  SHAPE is informational and changes neither score nor severity; unavailable vocabulary prints INFO.
+ INFO REPEAT x,y x,y x,y 4x4: non-overlapping 4x4 metatile block appearing >=3 times with >=2 physical classes (info only).

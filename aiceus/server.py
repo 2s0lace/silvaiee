@@ -34,7 +34,7 @@ SCALES = (1, 2, 3, 4)
 POS_RE = re.compile(r'@(\d+),(\d+)')
 BOX_RE = re.compile(r'(\d+),(\d+)-(\d+),(\d+)')
 RECT_RE = re.compile(r'^(\d+),(\d+),(\d+)x(\d+)$')
-HIT_RE = re.compile(r'^(\S+) (\d+),(\d+),(\d+)x(\d+) (\S+) (\S+) curvy:(\d+)$')
+HIT_RE = re.compile(r'^(\S+) (\d+),(\d+),(\d+)x(\d+) (\S+) (\S+) curvy:(\d+)(?: portable:(?:true|false))?$')
 PLACEHOLDER = ('<!doctype html><meta charset="utf-8"><title>aiceus</title>'
                '<p>aiceus backend is running. aiceus/index.html is not installed yet.</p>\n')
 
@@ -113,8 +113,13 @@ def api_maps(cfg):
 
 def parse_lint_line(text):
     """One lint row -> {check,x,y,w,h,text}. @x,y is 1x1, x,y-x2,y2 is a box (RECT/EMPTY/STAIR),
-    a line with no position (INFO) is x=y=-1. Every line becomes an item; nothing is dropped."""
+    INFO REPEAT x,y ... 4x4 is a 4x4 REPEAT box, and a line with no position (INFO) is x=y=-1.
+    Every line becomes an item; nothing is dropped."""
     parts = text.split()
+    if parts[:2] == ['INFO', 'REPEAT'] and len(parts) >= 6 and parts[-1] == '4x4':
+        m = re.match(r'^(\d+),(\d+)$', parts[2])
+        if m:
+            return {'check': 'REPEAT', 'x': int(m.group(1)), 'y': int(m.group(2)), 'w': 4, 'h': 4, 'text': text}
     check = parts[1] if parts[:1] == ['WARN'] and len(parts) > 1 else 'INFO'
     x = y = -1
     w = h = 1

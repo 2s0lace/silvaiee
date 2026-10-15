@@ -99,6 +99,11 @@ class Aiceus(unittest.TestCase):
         self.assertEqual(len([i for i in doc['lint'] if i['check'] == 'RARE']), rare)
         self.assertGreater(seams, 12)                                  # --all beats the max_lines cap
         self.assertEqual(set(doc['lint'][0]), {'check', 'x', 'y', 'w', 'h', 'text'})
+        status_sol, doc_sol = self.json_call('/api/map/PkPalletSolV2_Frlg')
+        self.assertEqual(status_sol, 200)
+        repeats = [i for i in doc_sol['lint'] if i['check'] == 'REPEAT']
+        self.assertEqual(len(repeats), 3)
+        self.assertTrue(all(i['w'] == 4 and i['h'] == 4 and i['x'] >= 0 and i['y'] >= 0 for i in repeats))
 
     def test_bad_map_name(self):
         status, doc = self.json_call('/api/map/NoSuchMap_Frlg')

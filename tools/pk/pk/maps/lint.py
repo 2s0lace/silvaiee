@@ -570,6 +570,7 @@ def run(repo, query, show_all=False):
     infos += [f'INFO UNCHECKED 0x{rid:03X} x{n} (no socket)' for rid, n in sorted(unchecked.items())]
     infos += cut
     infos += shapes(grid, pair, snap)
+    infos += repeats(grid, pair)
     header = (f'lint {grid.name} stratum:{stratum} '
               + ' '.join(f'{m}:{"-" if counts[m] is None else counts[m]}' for m in counts))
     delta = ''
@@ -614,6 +615,31 @@ def shapes(grid, pair, snap, leave_one_out=False):
     seen = {pat for pat, counts in stats.vocab.items()
             if any(n > own[(pat, mt)] for mt, n in counts.items())}
     return [f'INFO SHAPE {x},{y} {pat}' for (x, y), pat in patterns.items() if pat not in seen]
+
+
+def repeats(grid, pair):
+    """4x4 metatile blocks appearing >= 3 times without overlap and containing >= 2 physical classes."""
+    classes = [physical_class(pair.behavior_name(c[0]), c[1]) for c in grid.cells]
+    by_block = {}
+    for y in range(grid.h - 3):
+        for x in range(grid.w - 3):
+            w_cls = {classes[(y + dy) * grid.w + x + dx] for dy in range(4) for dx in range(4)}
+            if len(w_cls) < 2:
+                continue
+            key = tuple(grid.at(x + dx, y + dy)[0] for dy in range(4) for dx in range(4))
+            by_block.setdefault(key, []).append((x, y))
+    rows = []
+    for pos in by_block.values():
+        if len(pos) < 3:
+            continue
+        chosen = []
+        for x, y in pos:
+            if all(abs(x - cx) >= 4 or abs(y - cy) >= 4 for cx, cy in chosen):
+                chosen.append((x, y))
+        if len(chosen) >= 3:
+            rows.append((chosen[0], 'INFO REPEAT ' + ' '.join(f'{x},{y}' for x, y in chosen) + ' 4x4'))
+    rows.sort(key=lambda t: (t[0][1], t[0][0]))
+    return [r for _, r in rows]
 
 
 def build_pairs(repo):
