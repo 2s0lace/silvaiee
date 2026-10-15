@@ -135,6 +135,55 @@ def _traps(self, abilities):
 World.traps = _traps
 
 
+def check_write(repo, pair, before_cells, grid):
+    """After a map write, compare walkable cells reachable before vs after.
+    Returns 'reach: ok', 'WARN reach: N cells cut off, e.g. x,y x,y', or
+    'INFO reach: not checked (reason)'."""
+    try:
+        scripts = repo.read(f'data/maps/{grid.name}/scripts.inc').decode('utf-8')
+    except Exception:
+        scripts = ''
+    old_grid = Grid.__new__(Grid)
+    old_grid.repo, old_grid.name, old_grid.data, old_grid.layout = grid.repo, grid.name, grid.data, grid.layout
+    old_grid.w, old_grid.h, old_grid.cells = grid.w, grid.h, list(before_cells)
+    old_world = World(old_grid, pair, grid.data, scripts)
+    new_world = World(grid, pair, grid.data, scripts)
+    old_entries = old_world.entrances()
+    if not old_entries:
+        return 'INFO reach: not checked (no entrance)'
+    new_entries = new_world.entrances()
+    warps = [k for k in old_entries if k.startswith('warp#')]
+
+    def walkable(world):
+        return {(x, y) for y in range(grid.h) for x in range(grid.w)
+                if (x, y) not in world.walls and (x, y) not in world.blocked
+                and world.cell_kind(x, y)[0] in ('floor', 'ledge')}
+
+    walk_before = walkable(old_world)
+    walk_after = walkable(new_world)
+    if warps:
+        old_starts = set().union(*(old_entries[k] for k in warps))
+        new_starts = set().union(*(new_entries.get(k, set()) for k in warps))
+        before = old_world.reach(old_starts, set()) & walk_before
+        after = new_world.reach(new_starts, set()) if new_starts else set()
+        cut = (before & walk_after) - after
+    else:
+        cuts = []
+        for k in sorted(old_entries):
+            before = old_world.reach(old_entries[k], set()) & walk_before
+            new_starts = new_entries.get(k, set())
+            after = new_world.reach(new_starts, set()) if new_starts else set()
+            c = (before & walk_after) - after
+            if c:
+                cuts.append(c)
+        cut = min(cuts, key=len) if cuts else set()
+    if not cut:
+        return 'reach: ok'
+    ordered = sorted(cut, key=lambda p: (p[1], p[0]))
+    sample = ' '.join(f'{x},{y}' for x, y in ordered[:5])
+    return f'WARN reach: {len(ordered)} cells cut off, e.g. {sample}'
+
+
 def diff(repo, name, old_state, new_state, shift=(0, 0)):
     """old_state/new_state: (data, layout, repo_for_reading). Returns list of bypass descriptions."""
     def world(state):

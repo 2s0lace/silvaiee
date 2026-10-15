@@ -271,12 +271,16 @@ def command(repo, tx, args, opts):
                     err, x = err + dy, x + sx
                 if e2 <= dx:
                     err, y = err + dx, y + sy
+        before_cells = list(grid.cells)
         for i, j in cells:
             grid.set(i, j, default_bits(repo, pair, mt, grid.at(i, j), coll, elev))
         save(tx, grid)
         sample = grid.at(*cells[0])
-        return Result(f'{verb} {grid.name} {len(cells)} cells 0x{mt:03X} coll {sample[1]} elev {sample[2]}',
-                      changed_view(grid, pair, cells, layer))
+        rows = changed_view(grid, pair, cells, layer)
+        if verb == 'paint':
+            from . import reach
+            rows.append(reach.check_write(repo, pair, before_cells, grid))
+        return Result(f'{verb} {grid.name} {len(cells)} cells 0x{mt:03X} coll {sample[1]} elev {sample[2]}', rows)
     if verb == 'grid' and len(rest) in (2, 3):
         grid, pair = load(repo, rest[0])
         x0, y0 = point(rest[1], grid)
@@ -297,6 +301,7 @@ def command(repo, tx, args, opts):
         legend = {s: mt for mt, s in exact_legend(grid, pair, (x0, y0, w, h)).items()}
         legend.update(defs)
         coll, elev = bits_opts(opts)
+        before_cells = list(grid.cells)
         cells = []
         for j, row in enumerate(rows):
             for i, sym in enumerate(row):
@@ -308,7 +313,9 @@ def command(repo, tx, args, opts):
                 grid.set(x, y, default_bits(repo, pair, legend[sym], grid.at(x, y), coll, elev))
                 cells.append((x, y))
         save(tx, grid)
-        return Result(f'grid {grid.name} {len(cells)} cells at {x0},{y0}', changed_view(grid, pair, cells, layer))
+        from . import reach
+        return Result(f'grid {grid.name} {len(cells)} cells at {x0},{y0}',
+                      changed_view(grid, pair, cells, layer) + [reach.check_write(repo, pair, before_cells, grid)])
     if verb == 'copy' and len(rest) == 3:
         grid, pair = load(repo, rest[0])
         source, src_pair = (load(repo, opts['from']) if opts.get('from') else (grid, pair))
@@ -323,6 +330,7 @@ def command(repo, tx, args, opts):
         dx, dy = point(rest[2], grid)
         if not grid.inside(dx + w - 1, dy + h - 1):
             raise PkError('BOUNDS', f'copy target {dx},{dy},{w}x{h} outside {grid.w}x{grid.h}')
+        before_cells = list(grid.cells)
         block = [[source.at(sx + i, sy + j) for i in range(w)] for j in range(h)]
         cells = []
         for j in range(h):
@@ -333,10 +341,12 @@ def command(repo, tx, args, opts):
         if opts.get('repair'):
             from . import terrain
             rules = terrain.Rules(repo, pair, include_pk=False)
-            repaired = terrain.repair(repo, pair, rules, grid, (dx, dy, w, h), int(opts.get('ring', 2)))
+            repaired = terrain.repair(repo, pair, rules, grid, (dx, dy, w, h), int(opts.get('ring', 2)), outside_only=True)
         save(tx, grid)
+        from . import reach
         tail = f' repair:{len(repaired)}' if opts.get('repair') else ''
-        return Result(f'copy {grid.name} {w}x{h} -> {dx},{dy}{tail}', changed_view(grid, pair, cells, layer))
+        return Result(f'copy {grid.name} {w}x{h} -> {dx},{dy}{tail}',
+                      changed_view(grid, pair, cells, layer) + [reach.check_write(repo, pair, before_cells, grid)])
     if verb == 'border' and len(rest) >= 2:
         grid, pair = load(repo, rest[0])
         bw, bh = grid.layout.get('border_width', 2), grid.layout.get('border_height', 2)

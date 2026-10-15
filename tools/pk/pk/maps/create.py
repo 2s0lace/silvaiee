@@ -151,6 +151,7 @@ def stamp(repo, tx, args, opts, pagination):
         w, h = d['size']
         if not grid.inside(x + w - 1, y + h - 1):
             raise PkError('BOUNDS', f'stamp {w}x{h} at {x},{y} exceeds {grid.w}x{grid.h}')
+        before_cells = list(grid.cells)
         cells = []
         for j, row in enumerate(d['cells']):
             for i, c in enumerate(row):
@@ -162,10 +163,12 @@ def stamp(repo, tx, args, opts, pagination):
         if opts.get('repair'):
             from . import terrain
             rules = terrain.Rules(repo, pair, include_pk=False)
-            repaired = terrain.repair(repo, pair, rules, grid, (x, y, w, h), int(opts.get('ring', 2)))
+            repaired = terrain.repair(repo, pair, rules, grid, (x, y, w, h), int(opts.get('ring', 2)), outside_only=True)
         save(tx, grid)
+        from . import reach
         tail = f' repair:{len(repaired)}' if opts.get('repair') else ''
-        return Result(f'stamp {rest[1]} placed in {grid.name} at {x},{y}{tail}', changed_view(grid, pair, cells, 'class'))
+        return Result(f'stamp {rest[1]} placed in {grid.name} at {x},{y}{tail}',
+                      changed_view(grid, pair, cells, 'class') + [reach.check_write(repo, pair, before_cells, grid)])
     if verb == 'from-tileset' and len(rest) == 3:
         return stamp_from_tileset(repo, tx, *rest, opts)
     if verb == 'mine' and len(rest) == 1:

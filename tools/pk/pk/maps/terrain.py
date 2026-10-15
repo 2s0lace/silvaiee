@@ -207,7 +207,7 @@ def ring_cells(grid, box, ring):
     return cells
 
 
-def repair(repo, pair, rules, grid, box, ring=2, frozen=frozenset(), passes=16):
+def repair(repo, pair, rules, grid, box, ring=2, frozen=frozenset(), passes=16, outside_only=False):
     """Re-solve only the band around `box` (ring_cells) against the *seen* vanilla adjacencies.
 
     A cell is only swapped for another metatile of the same material, and only when that lowers the
@@ -215,6 +215,18 @@ def repair(repo, pair, rules, grid, box, ring=2, frozen=frozenset(), passes=16):
     Unlike solve(), this minimises the critic directly, so a repair changes few cells and still
     removes seams. Returns the list of changed cells; the rest of the map is untouched."""
     targets = ring_cells(grid, box, ring) - set(frozen)
+    x0, y0, w, h = box
+    inside = lambda x, y: x0 <= x < x0 + w and y0 <= y < y0 + h
+    if outside_only:
+        # A pasted vanilla piece is the good part: the map around it adapts, and inside the piece only
+        # its 1-tile rim may change, to a tile of the same physical class (water stays water). Before,
+        # small pieces were rewritten completely (3 of 4 models in benchmark v2 hit this).
+        targets = {(x, y) for x, y in targets
+                   if not inside(x, y) or min(x - x0, x0 + w - 1 - x, y - y0, y0 + h - 1 - y) == 0}
+    from .lint import physical_class
+
+    def phys(cell):
+        return physical_class(pair.behavior_name(cell[0]), cell[1]), cell[2]
     if not targets:
         return []
     known = set(rules.freq)
@@ -250,11 +262,16 @@ def repair(repo, pair, rules, grid, box, ring=2, frozen=frozenset(), passes=16):
             old = grid.at(x, y)
             material = rules.material(old)
             best, best_cost = old[0], cell_cost(x, y, old[0])
+            locked = outside_only and inside(x, y)
             for metatile in sorted(rules.by_mat.get(material, ())):
                 if metatile == old[0]:
                     continue
                 cost = cell_cost(x, y, metatile)
-                if cost < best_cost or (cost == best_cost and metatile < best):
+                # Strictly better only: a tie used to swap in the lowest id, rewriting cells that had
+                # no seam at all.
+                if cost < best_cost:
+                    if locked and phys(bits_for(repo, pair, rules, metatile, material, old)) != phys(old):
+                        continue
                     best, best_cost = metatile, cost
             if best != old[0]:
                 grid.set(x, y, bits_for(repo, pair, rules, best, material, old))
@@ -355,11 +372,13 @@ def auto(repo, tx, query, box_text, diag_weight=0.5):
     reference data."""
     from .layers import parse_rect
     from .lint import physical_class
+    from . import reach
     grid, pair = load(repo, query)
     x0, y0, w, h = parse_rect(box_text, grid.w, grid.h)
     rules = Rules(repo, pair, include_pk=False)
     if not rules.layouts:
         raise PkError('NOTFOUND', f'no vanilla layout uses the tileset pair of {grid.name}')
+    before_cells = list(grid.cells)
     options = sorted(m for m, n in rules.freq.items()
                      if n >= AUTO_MIN_FREQ and physical_class(pair.behavior_name(m), 0) != 'door')
     box = [(x, y) for y in range(y0, y0 + h) for x in range(x0, x0 + w)]
@@ -389,6 +408,7 @@ def auto(repo, tx, query, box_text, diag_weight=0.5):
     if bad:
         rows.insert(0, f'WARN {len(bad)} seams never seen in vanilla remain, e.g. ' +
                     ' '.join(f'{x},{y}{d}' for x, y, d in bad[:5]))
+    rows.append(reach.check_write(repo, pair, before_cells, grid))
     return Result(f'terrain auto {grid.name} {x0},{y0},{w}x{h} candidates:{len(options)} '
                   f'changed:{len(changed)} seams:{before}->{len(bad)}', rows)
 
@@ -409,10 +429,14 @@ def command(repo, tx, args, opts, pagination):
         rect = parse_rect(opts.get('rect'), grid.w, grid.h)
         return Result(f'terrain {grid.name} materials', render(grid, pair, rect, 'class', False))
     if verb == 'brush' and len(rest) >= 3:
+        from . import reach
         grid, pair = load(repo, rest[0])
+        before_cells = list(grid.cells)
         material = rest[-1]
         cells = shape_cells(grid, rest[1:-1])
-        return apply(repo, tx, grid, pair, Rules(repo, pair), {p: material for p in cells}, f'brush {material}')
+        res = apply(repo, tx, grid, pair, Rules(repo, pair), {p: material for p in cells}, f'brush {material}')
+        res.data.append(reach.check_write(repo, pair, before_cells, grid))
+        return res
     if verb == 'river' and len(rest) >= 3:
         grid, pair = load(repo, rest[0])
         cells = shape_cells(grid, ['path'] + rest[1:])
