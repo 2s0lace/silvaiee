@@ -58,6 +58,18 @@ class RepairKeepsPiece(MapTest):
                     self.assertEqual(phys(new), phys(old), f'rim {i},{j} changed class')  # rim: same class
         self.assertIn('repair:', result.summary)
 
+    def test_repair_warns_when_over_thirty_percent_of_rim_changes(self):
+        # Triggering case: Route21_North_Frlg 4,28,6x4 -> PalletTown_Frlg 6,15 changes 15 of 16 rim cells (93.8%).
+        bad = self.map('copy', 'PalletTown_Frlg', '4,28,6x4', '6,15',
+                       **{'from': 'Route21_North_Frlg', 'repair': True})
+        self.assertIn('WARN repair changed 15 of 16 rim cells; the piece may not fit here', bad.data)
+
+    def test_repair_stays_quiet_when_rim_fits(self):
+        # Non-triggering case: Route21_North_Frlg 11,1,4x2 -> PalletTown_Frlg 14,17 changes 1 of 8 rim cells (12.5%).
+        good = self.map('copy', 'PalletTown_Frlg', '11,1,4x2', '14,17',
+                        **{'from': 'Route21_North_Frlg', 'repair': True})
+        self.assertFalse(any(r.startswith('WARN repair changed') for r in good.data), good.data)
+
 
 class ReachWriteTest(MapTest):
     def test_wall_across_pallet_south_exit_warns_with_right_count(self):

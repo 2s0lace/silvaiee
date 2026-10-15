@@ -160,15 +160,19 @@ def stamp(repo, tx, args, opts, pagination):
                 grid.set(x + i, y + j, tuple(c))
                 cells.append((x + i, y + j))
         repaired = []
+        notes = []
         if opts.get('repair'):
             from . import terrain
             rules = terrain.Rules(repo, pair, include_pk=False)
             repaired = terrain.repair(repo, pair, rules, grid, (x, y, w, h), int(opts.get('ring', 2)), outside_only=True)
+            warn = terrain.repair_warning((x, y, w, h), repaired, cells)
+            if warn:
+                notes.append(warn)
         save(tx, grid)
         from . import reach
         tail = f' repair:{len(repaired)}' if opts.get('repair') else ''
         return Result(f'stamp {rest[1]} placed in {grid.name} at {x},{y}{tail}',
-                      changed_view(grid, pair, cells, 'class') + [reach.check_write(repo, pair, before_cells, grid)])
+                      notes + changed_view(grid, pair, cells, 'class') + [reach.check_write(repo, pair, before_cells, grid)])
     if verb == 'from-tileset' and len(rest) == 3:
         return stamp_from_tileset(repo, tx, *rest, opts)
     if verb == 'mine' and len(rest) == 1:

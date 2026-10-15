@@ -281,6 +281,24 @@ def repair(repo, pair, rules, grid, box, ring=2, frozen=frozenset(), passes=16, 
     return [p for p in targets if grid.at(*p) != before[p]]
 
 
+def rim_cells(box):
+    """The 1-tile rim inside `box` (x0, y0, w, h)."""
+    x0, y0, w, h = box
+    return {(x, y) for y in range(y0, y0 + h) for x in range(x0, x0 + w)
+            if min(x - x0, x0 + w - 1 - x, y - y0, y0 + h - 1 - y) == 0}
+
+
+def repair_warning(box, repaired, placed=None):
+    """If more than 30% of the piece's 1-tile rim changed, return a WARN line; else None."""
+    rim = rim_cells(box)
+    if placed is not None:
+        rim &= set(placed)
+    k, n = len(set(repaired) & rim), len(rim)
+    if n and k > 0.3 * n:
+        return f'WARN repair changed {k} of {n} rim cells; the piece may not fit here'
+    return None
+
+
 def unseen(grid, rules, cells):
     """Adjacent pairs touching the given cells that never occur in vanilla."""
     bad = set()

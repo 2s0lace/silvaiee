@@ -901,3 +901,9 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - `terrain.repair(..., outside_only=True)` freezes the pasted piece's interior, restricts its 1-tile rim to the same physical class, and swaps only when seam cost strictly improves (`cost < best_cost`). Wired into `map copy --repair` and `stamp place --repair`.
 - `reach.check_write(repo, pair, before_cells, grid)` compares walkable cells (`floor`/`ledge`, not blocked by NPCs/triggers/scripted positions) reachable on foot before vs after a write (`map copy`, `map paint`, `map grid`, `terrain auto`, `terrain brush`, `stamp place`), appending `reach: ok`, `WARN reach: N cells cut off, e.g. x,y ...`, or `INFO reach: not checked (no entrance)`.
 - `C:/Python314/python.exe -B -m unittest discover -s tools/pk/tests -p test_terrain_auto.py -v`: 5 tests pass (`0,16,24x1` wall across Pallet Town's south exit reports `WARN reach: 47 cells cut off, e.g. 2,17 3,17 4,17 5,17 6,17`; harmless writes report `reach: ok`; entrance-free map reports `INFO reach: not checked (no entrance)`).
+
+## Round 4 step 2: repair warns when over 30% of rim cells change
+- `terrain.repair_warning(box, repaired, placed=None)` checks how many cells in the pasted piece's 1-tile rim (`terrain.rim_cells`) were altered by `repair()`. When `k > 0.3 * n`, `map copy --repair` and `stamp place --repair` emit `WARN repair changed K of N rim cells; the piece may not fit here`.
+- Measured cases (`C:/Python314/python.exe -B -m unittest discover -s tools/pk/tests -p test_terrain_auto.py -v`, 7 tests pass):
+  - Triggering: `Route21_North_Frlg 4,28,6x4 -> PalletTown_Frlg 6,15` changes `15 of 16` rim cells (93.8%) and emits `WARN repair changed 15 of 16 rim cells; the piece may not fit here`.
+  - Non-triggering: `Route21_North_Frlg 11,1,4x2 -> PalletTown_Frlg 14,17` changes `1 of 8` rim cells (12.5%) and emits no repair warning.

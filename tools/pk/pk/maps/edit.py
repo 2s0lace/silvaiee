@@ -338,15 +338,19 @@ def command(repo, tx, args, opts):
                 grid.set(dx + i, dy + j, block[j][i])
                 cells.append((dx + i, dy + j))
         repaired = []
+        notes = []
         if opts.get('repair'):
             from . import terrain
             rules = terrain.Rules(repo, pair, include_pk=False)
             repaired = terrain.repair(repo, pair, rules, grid, (dx, dy, w, h), int(opts.get('ring', 2)), outside_only=True)
+            warn = terrain.repair_warning((dx, dy, w, h), repaired)
+            if warn:
+                notes.append(warn)
         save(tx, grid)
         from . import reach
         tail = f' repair:{len(repaired)}' if opts.get('repair') else ''
         return Result(f'copy {grid.name} {w}x{h} -> {dx},{dy}{tail}',
-                      changed_view(grid, pair, cells, layer) + [reach.check_write(repo, pair, before_cells, grid)])
+                      notes + changed_view(grid, pair, cells, layer) + [reach.check_write(repo, pair, before_cells, grid)])
     if verb == 'border' and len(rest) >= 2:
         grid, pair = load(repo, rest[0])
         bw, bh = grid.layout.get('border_width', 2), grid.layout.get('border_height', 2)
