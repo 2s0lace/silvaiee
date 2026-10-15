@@ -92,7 +92,7 @@ def dispatch(repo, tx, argv):
                                            'anchor', 'fill', 'size', 'tilesets', 'type', 'like', 'music', 'group', 'out', 'scale',
                                            'into', 'viewport', 'compare', 'ring', 'max-steps'),
                              flags=('exact', 'no-events', 'fork-layout', 'drop-out-of-bounds', 'stamps', 'snapshot',
-                                    'all', 'grid', 'repair'))
+                                    'all', 'grid', 'repair', 'annotate'))
         if args and args[0] == 'paintover' and len(args) == 3:
             result = map_paintover.command(repo, tx, args, opts)
         elif args and args[0] == 'polish' and len(args) == 2:

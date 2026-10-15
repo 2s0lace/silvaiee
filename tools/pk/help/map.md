@@ -78,3 +78,6 @@ pk map export MAP [--out file] (default .pk/map/MAP.map): the whole map as text.
  Format: "pkmap 1", layout id, tileset pair, size; "grid" then "legend SYM 0xID" lines and "yy| SYM SYM ..."
  rows; "coll"/"elev" defaults per metatile symbol plus "coll! x,y=v"/"elev! x,y=v" exceptions; "border WxH"
  with "0xID,coll,elev" cells. Export then import is byte-identical on every vanilla FRLG outdoor layout.
+
+ --annotate: absolute x/y rulers every 5 tiles; all lint WARN boxes and @x,y labels.
+ SEAM red, RARE orange, STAIR purple, RECT teal, EMPTY blue. Cropped-out boxes print INFO.

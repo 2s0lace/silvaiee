@@ -180,7 +180,7 @@ def command(repo, tx, args, opts):
             rows = stamp_overlay(grid, pair, rect, rows, show_events)
         return Result(f'{grid.name} {grid.w}x{grid.h} rect {x},{y},{w}x{h} layer:{"+".join(layers)}', note + rows)
     if verb == 'render' and len(rest) == 1:
-        from .meta import render_png, render_compare
+        from .meta import render_png, render_compare, render_annotated
         grid, pair = load(repo, rest[0])
         viewport = opts.get('viewport')
         if viewport:
@@ -199,17 +199,23 @@ def command(repo, tx, args, opts):
         grid_lines = bool(opts.get('grid'))
         if opts.get('compare'):
             other, other_pair = load(repo, opts['compare'])
-            data = render_compare(repo, (grid, pair), (other, other_pair), scale, grid_lines)
+            data = render_compare(repo, (grid, pair), (other, other_pair), scale, grid_lines,
+                                  annotate=bool(opts.get('annotate')))
             out = opts.get('out') or f'.pk/render/{grid.name}_vs_{other.name}.png'
             tx.stage(repo.path(out).relative_to(repo.root).as_posix(), data)
             return Result(f'render compare {grid.name} vs {other.name} scale:{scale} '
                           f'{"grid " if grid_lines else ""}-> {out}',
                           [f'left {grid.w}x{grid.h} right {other.w}x{other.h} gap 1 tile'])
         out = opts.get('out') or f'.pk/render/{grid.name}.png'
-        tx.stage(repo.path(out).relative_to(repo.root).as_posix(),
-                 render_png(repo, grid, pair, rect, scale, grid_lines))
+        notes = []
+        if opts.get('annotate'):
+            data, count, notes = render_annotated(repo, grid, pair, rect, scale, grid_lines)
+            notes.insert(0, f'annotations boxes:{count}')
+        else:
+            data = render_png(repo, grid, pair, rect, scale, grid_lines)
+        tx.stage(repo.path(out).relative_to(repo.root).as_posix(), data)
         return Result(f'render {grid.name} {rect[2]}x{rect[3]} scale:{scale}'
-                      f'{" grid" if grid_lines else ""} -> {out}')
+                      f'{" grid" if grid_lines else ""} -> {out}', notes)
     if verb == 'seam' and len(rest) == 2:
         from . import terrain
         grid, pair = load(repo, rest[0])

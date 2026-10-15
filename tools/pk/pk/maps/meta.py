@@ -233,15 +233,76 @@ def render_png(repo, grid, pair, rect, scale=1, grid_lines=False):
     return buf.getvalue()
 
 
-def render_compare(repo, left, right, scale=1, grid_lines=False, gap=1):
+ANNOTATION_COLORS = {'SEAM': 'red', 'RARE': 'orange', 'STAIR': 'purple', 'RECT': 'teal', 'EMPTY': 'blue'}
+
+
+def annotate_png(png, rect, scale, warns):
+    """Add absolute-coordinate rulers and one box per visible WARN; return PNG, count, INFO notes."""
+    import io
+    from PIL import ImageDraw
+    x0, y0, w, h = rect
+    tile, margin = 16 * scale, 28
+    image = Image.open(io.BytesIO(png)).convert('RGB')
+    canvas = Image.new('RGB', (image.width + 2 * margin, image.height + 2 * margin), '#eeeeee')
+    canvas.paste(image, (margin, margin))
+    pen = ImageDraw.Draw(canvas)
+    for x in range(x0, x0 + w):
+        if x % 5 == 0:
+            for y in (3, margin + image.height + 3):
+                pen.text((margin + (x - x0) * tile, y), str(x), fill='black')
+    for y in range(y0, y0 + h):
+        if y % 5 == 0:
+            for x in (2, margin + image.width + 2):
+                pen.text((x, margin + (y - y0) * tile), str(y), fill='black')
+    count, notes = 0, []
+    for line in warns:
+        kind = line.split()[1]
+        point = re.search(r'@(\d+),(\d+)', line)
+        span = re.search(r'(\d+),(\d+)-(\d+),(\d+)', line)
+        if point:
+            xa, ya = map(int, point.groups())
+            xb, yb = xa, ya
+            if re.search(r'WARN (?:SEAM|RARE) h ', line):
+                xb += 1
+            elif re.search(r'WARN (?:SEAM|RARE) v ', line):
+                yb += 1
+        elif span:
+            xa, ya, xb, yb = map(int, span.groups())
+        else:
+            raise PkError('PARSE', f'cannot annotate lint row: {line}')
+        xa, xb = sorted((xa, xb))
+        ya, yb = sorted((ya, yb))
+        if xb < x0 or yb < y0 or xa >= x0 + w or ya >= y0 + h:
+            notes.append(f'INFO annotation outside render rect: {line}')
+            continue
+        box = (margin + (max(xa, x0) - x0) * tile, margin + (max(ya, y0) - y0) * tile,
+               margin + (min(xb + 1, x0 + w) - x0) * tile - 1,
+               margin + (min(yb + 1, y0 + h) - y0) * tile - 1)
+        color = ANNOTATION_COLORS[kind]
+        pen.rectangle(box, outline=color, width=2)
+        pen.text((box[0] + 2, box[1] + 2), f'@{xa},{ya}', fill=color, stroke_width=1, stroke_fill='white')
+        count += 1
+    buf = io.BytesIO()
+    canvas.save(buf, 'PNG')
+    return buf.getvalue(), count, notes
+
+
+def render_annotated(repo, grid, pair, rect, scale=1, grid_lines=False):
+    from . import lint
+    warns = [line for line in lint.run(repo, grid.name, show_all=True).data if line.startswith('WARN ')]
+    return annotate_png(render_png(repo, grid, pair, rect, scale, grid_lines), rect, scale, warns)
+
+
+def render_compare(repo, left, right, scale=1, grid_lines=False, gap=1, annotate=False):
     """Two maps' full images side by side (A left, B right) with a `gap`-tile gap at the same
     scale, for before/after review. Returns PNG bytes."""
     import io
     (grid_a, pair_a), (grid_b, pair_b) = left, right
     rect_a, rect_b = (0, 0, grid_a.w, grid_a.h), (0, 0, grid_b.w, grid_b.h)
     tile = 16 * scale
-    a = Image.open(io.BytesIO(render_png(repo, grid_a, pair_a, rect_a, scale, grid_lines)))
-    b = Image.open(io.BytesIO(render_png(repo, grid_b, pair_b, rect_b, scale, grid_lines)))
+    render = (lambda *args: render_annotated(*args)[0]) if annotate else render_png
+    a = Image.open(io.BytesIO(render(repo, grid_a, pair_a, rect_a, scale, grid_lines)))
+    b = Image.open(io.BytesIO(render(repo, grid_b, pair_b, rect_b, scale, grid_lines)))
     img = Image.new('RGBA', (a.width + gap * tile + b.width, max(a.height, b.height)), (0, 0, 0, 255))
     img.paste(a, (0, 0))
     img.paste(b, (a.width + gap * tile, 0))

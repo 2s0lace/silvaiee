@@ -12,6 +12,8 @@ from pk.core.journal import Transaction
 from pk.maps import kit, edit, meta
 from pk.maps.paintover import copy_map
 from pk.core.errors import PkError
+from pk.maps import lint
+from unittest import mock
 
 
 class MemoryRepo(Repo):
@@ -93,5 +95,41 @@ class PortableTest(unittest.TestCase):
         self.assertEqual([e['pair'] for _, e in hits], ['A+B'])
 
 
+class AnnotationTest(unittest.TestCase):
+    def test_every_warn_draws_one_box(self):
+        repo = Repo(ROOT)
+        grid, pair = edit.load(repo, 'PkPalletMuse_Frlg')
+        warns = [row for row in lint.run(repo, grid.name, show_all=True).data if row.startswith('WARN ')]
+        original = __import__('PIL.ImageDraw', fromlist=['ImageDraw']).ImageDraw.rectangle
+        calls = []
+
+        def record(pen, *args, **kwargs):
+            calls.append(args[0])
+            return original(pen, *args, **kwargs)
+
+        with mock.patch('PIL.ImageDraw.ImageDraw.rectangle', record):
+            png, count, notes = meta.render_annotated(repo, grid, pair, (0, 0, grid.w, grid.h))
+        print(f'ANNOTATE warnings={len(warns)} boxes={len(calls)}', flush=True)
+        self.assertGreater(len(warns), 0)
+        self.assertEqual(len(calls), len(warns))
+        self.assertEqual(count, len(warns))
+        self.assertEqual(notes, [])
+        self.assertEqual(Image.open(io.BytesIO(png)).size, (grid.w * 16 + 56, grid.h * 16 + 56))
+
+    def test_all_colors_and_crop_skip_info(self):
+        image = io.BytesIO()
+        Image.new('RGB', (160, 160)).save(image, 'PNG')
+        rows = ['WARN SEAM h 0x001-0x002 @1,1', 'WARN RARE v 0x001-0x002 @2,2',
+                'WARN STAIR water|ground 3,3-4,4 run:2', 'WARN RECT water 5,5-6,6 100%',
+                'WARN EMPTY 7,7-8,8']
+        png, count, notes = meta.annotate_png(image.getvalue(), (0, 0, 10, 10), 1, rows)
+        self.assertEqual(count, len(rows))
+        _, count, notes = meta.annotate_png(image.getvalue(), (20, 20, 10, 10), 1, rows)
+        self.assertEqual(count, 0)
+        self.assertTrue(all(line.startswith('INFO') for line in notes))
+        self.assertEqual(len(notes), len(rows))
+
+
 if __name__ == '__main__':
     unittest.main()
+
