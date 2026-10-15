@@ -81,3 +81,7 @@ pk map export MAP [--out file] (default .pk/map/MAP.map): the whole map as text.
 
  --annotate: absolute x/y rulers every 5 tiles; all lint WARN boxes and @x,y labels.
  SEAM red, RARE orange, STAIR purple, RECT teal, EMPTY blue. Cropped-out boxes print INFO.
+
+ INFO SHAPE x,y pattern: physical 3x3 class pattern absent from the frozen v4 vocabulary.
+ Vanilla keeps its vocabulary (no leave-one-out), so untouched regions remain quiet. Pk drafts never contribute reference counts.
+ SHAPE is informational and changes neither score nor severity; unavailable vocabulary prints INFO.

@@ -187,6 +187,56 @@ class BlueprintKitbashTest(unittest.TestCase):
                 parse(f'blueprint PkR3Blueprint_Frlg v1\nterrain\n  {step}')
 
 
+class ShapeTest(unittest.TestCase):
+    def test_owner_audit_rules(self):
+        from round3_measure import audit_rules
+        cases = [
+            ('grass_plain', 'walk', 0, 'MB_NORMAL', []),
+            ('water_plain', 'walk', 0, 'MB_NORMAL', ['water_not_surf']),
+            ('water_plain', 'surf', 0, 'MB_POND_WATER', []),
+            ('sand_plain', 'wall', 1, 'MB_NORMAL', ['terrain_collision_1']),
+            ('ground_plain', 'wall', 1, 'MB_NORMAL', ['terrain_collision_1']),
+            ('grass_plain', 'wall', 1, 'MB_NORMAL', ['terrain_collision_1']),
+            ('solid_plain', 'walk', 0, 'MB_NORMAL', ['solid_collision_0']),
+            ('wall_plain', 'wall', 1, 'MB_NORMAL', []),
+            ('solid_plain', 'wall', 2, 'MB_NORMAL', []),
+            ('ledge_s', 'walk', 0, 'MB_NORMAL', ['ledge_without_behaviour']),
+            ('ledge_s', 'ledge_s', 0, 'MB_JUMP_SOUTH', []),
+            ('flowers_plain', 'wall', 1, 'MB_NORMAL', []),
+        ]
+        for name, cls, collision, behaviour, expected in cases:
+            with self.subTest(name=name, collision=collision):
+                self.assertEqual(audit_rules(name, cls, collision, behaviour), expected)
+
+    def test_shape_is_info_only_and_leaves_score_unchanged(self):
+        repo = Repo(ROOT)
+        original = lint.shapes
+        with mock.patch.object(lint, 'shapes', return_value=[]):
+            before = lint.run(repo, 'PkPalletMuse_Frlg', show_all=True)
+        with mock.patch.object(lint, 'shapes', return_value=['INFO SHAPE 1,1 synthetic']):
+            after = lint.run(repo, 'PkPalletMuse_Frlg', show_all=True)
+        self.assertEqual(before.summary, after.summary)
+        self.assertEqual([x for x in after.data if x.startswith('WARN')],
+                         [x for x in before.data if x.startswith('WARN')])
+
+    def test_shapes_use_vocabulary_and_leave_one_out(self):
+        from types import SimpleNamespace
+        grid = SimpleNamespace(w=1, h=1, name='Vanilla', at=lambda x, y: (1, 0, 0))
+        pair = SimpleNamespace(behavior_name=lambda mt: 'MB_NORMAL')
+        pattern = '|'.join(['walk'] * 9)
+        vocab = {pattern: {1: 1}}
+        snap = SimpleNamespace(maps={'Vanilla': {}}, pair=lambda p: SimpleNamespace(vocab=vocab))
+        self.assertEqual(lint.shapes(grid, pair, snap), [])
+        self.assertEqual(lint.shapes(grid, pair, snap, leave_one_out=True), [f'INFO SHAPE 0,0 {pattern}'])
+        vocab[pattern][1] = 2
+        self.assertEqual(lint.shapes(grid, pair, snap), [])
+        grid.name = 'PkDraft'
+        vocab[pattern][1] = 1
+        self.assertEqual(lint.shapes(grid, pair, snap), [])
+        vocab.clear()
+        self.assertTrue(lint.shapes(grid, pair, snap)[0].startswith('INFO SHAPE unavailable'))
+
+
 if __name__ == '__main__':
     unittest.main()
 

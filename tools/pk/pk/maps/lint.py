@@ -12,6 +12,7 @@ score is the number of checks that fire.
 import json
 import math
 import re
+from collections import Counter
 
 from ..core.errors import PkError
 from ..core.out import Result
@@ -568,6 +569,7 @@ def run(repo, query, show_all=False):
         infos.append('INFO patch unavailable; rerun pk map lint --snapshot for the 3x3 windows')
     infos += [f'INFO UNCHECKED 0x{rid:03X} x{n} (no socket)' for rid, n in sorted(unchecked.items())]
     infos += cut
+    infos += shapes(grid, pair, snap)
     header = (f'lint {grid.name} stratum:{stratum} '
               + ' '.join(f'{m}:{"-" if counts[m] is None else counts[m]}' for m in counts))
     delta = ''
@@ -594,6 +596,24 @@ def pattern_at(cls, w, h, x, y):
     """3x3 physical-class pattern around (x,y), clamping out-of-bounds to the nearest edge cell."""
     return '|'.join(cls[(min(max(x + dx, 0), w - 1), min(max(y + dy, 0), h - 1))]
                     for dy in (-1, 0, 1) for dx in (-1, 0, 1))
+
+
+def shapes(grid, pair, snap, leave_one_out=False):
+    """Unseen physical 3x3 shapes, INFO only. Keep vanilla vocabulary for map reworking.
+
+    leave_one_out is retained only for reproducing the original, rejected target.
+    """
+    stats = snap.pair(pair) if snap is not None else None
+    if stats is None or not stats.vocab:
+        return ['INFO SHAPE unavailable: snapshot has no physical vocabulary']
+    classes = {(x, y): physical_class(pair.behavior_name(grid.at(x, y)[0]), grid.at(x, y)[1])
+               for y in range(grid.h) for x in range(grid.w)}
+    patterns = {(x, y): pattern_at(classes, grid.w, grid.h, x, y)
+                for y in range(grid.h) for x in range(grid.w)}
+    own = Counter((pat, grid.at(x, y)[0]) for (x, y), pat in patterns.items()) if leave_one_out and grid.name in snap.maps else Counter()
+    seen = {pat for pat, counts in stats.vocab.items()
+            if any(n > own[(pat, mt)] for mt, n in counts.items())}
+    return [f'INFO SHAPE {x},{y} {pat}' for (x, y), pat in patterns.items() if pat not in seen]
 
 
 def build_pairs(repo):
