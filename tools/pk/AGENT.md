@@ -21,9 +21,10 @@ pk map resize MAP --add right=8,bottom=4 [--fill extend|border|terrain|METATILE]
 pk map export MAP [--out file] | pk map import MAP file (lossless text: grid, coll/elev, border.bin)
 pk map extend-to MAP NEIGHBOUR | pk map new NAME --size WxH --tilesets P,S --fill METATILE
 pk terrain brush MAP rect|circle|path ... MATERIAL (water, grass, sand, ground, solid, ledge_s, tags)
-pk terrain river MAP x,y x,y [width=2] | ledge | forest --stamp tree | bake | learn | show
+pk terrain river MAP x,y x,y [width=2] | ledge | forest --stamp tree | bake | learn | show | auto MAP x,y,WxH
 pk stamp extract MAP x,y,WxH name | from-tileset SET.pkt OBJ.px name | mine PAIR [--min-count 3] [--apply] | ls
 pk stamp place MAP name x,y
+pk kit index | find [--feature F --top C --bottom C --left C --right C --size WxH --pair P --sheet] | fit MAP x,y,WxH (help kit)
 pk bp check|plan|render|apply MAP | pk bp world | pk bp export MAP (help bp: blueprint format)
 pk tileset build art/X/tileset.pkt | pk tileset export MAP name | pk px show|check|render FILE.px
 pk sprite show|export GFX | pk sprite build FILE.px name --like GFX (NPC overworld sprites)

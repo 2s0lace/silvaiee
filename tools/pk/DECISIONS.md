@@ -872,3 +872,10 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 
 
 
+
+## Round 3 step 1: portable kit pieces
+- Portable windows contain only primary metatile ids, using pair.limits['metatiles']. Cross-secondary copy rejects blocking ids; find accepts portable windows sharing the primary. Fit filters exact sizes before limiting; find retains near sizes. Old caches rebuild with INFO.
+- `C:/Python314/python.exe -B tools/pk/pk.py kit index`: 119521 pieces from 72 maps.
+- `C:/Python314/python.exe -B -m unittest discover -s tools/pk/tests -p test_round3.py -v`: fit at 0,0,2x2 in an in-memory PkR3Portable_Frlg copy returns 40 source maps (97 matches). Render checks on BirthIsland_Exterior, CeladonCity, CeruleanCity, CinnabarIsland and FiveIsland (all _Frlg) have 0 differing pixels each.
+- `C:/Python314/python.exe -B -m unittest discover -s tools/pk/tests -p test_kit.py`: 29 tests pass.
+- Includes existing kit, terrain auto, aiceus and the physical-vocabulary polish work; the known PolishTest failures are untouched. No maps were committed or built.

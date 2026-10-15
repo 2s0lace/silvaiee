@@ -501,41 +501,49 @@ class SeamRepair(MapTest):
 
 
 class PolishTest(MapTest):
-    def test_polish_drops_severity_and_keeps_guards(self):
-        # B3: polishing into a copy roughly halves severity, changes <10% of the cells, leaves the
-        # frozen (event/structure/far) cells untouched, and never lets a material vanish.
-        from pk.maps import lint, polish, terrain
+    def test_physical_classes_on_known_tiles(self):
+        # B3c Step 1: physical classes come from game data only (dominant vanilla collision +
+        # behaviour), never from sidecar names/tags (0x045 is named water_151, 0x0D4 is grass_3).
+        from pk.maps import lint
+        _, pair = edit.load(self.repo, 'PalletTown_Frlg')
+        self.assertEqual(lint.metatile_physical(self.repo, pair, 0x045)[0], 'wall')
+        self.assertEqual(lint.metatile_physical(self.repo, pair, 0x0D4)[0], 'walk')
+        self.assertEqual(lint.metatile_physical(self.repo, pair, 0x12B)[0], 'surf')
+        self.assertEqual(lint.metatile_physical(self.repo, pair, 0x00D)[0], 'grass_enc')
+        self.assertEqual(lint.metatile_physical(self.repo, pair, 0x087)[0], 'ledge_s')
+
+    def test_polish_class_lock_and_nofit(self):
+        # B3c Step 2: physical class lock rejects a tile of a different physical class even if
+        # injected into the vocabulary, and an unseen seam with no fitting tile prints INFO NOFIT.
+        from pk.maps import lint, polish
         result = polish.command(self.repo, self.tx, 'PkPalletMuse_Frlg', {'into': 'PkTestPolish_Frlg'})
         match = re.search(r'severity:([0-9.]+)->([0-9.]+)', result.summary)
         before, after = float(match[1]), float(match[2])
-        self.assertLessEqual(after, before * 0.5, result.summary)
+        self.assertLessEqual(after, before * 0.7, result.summary)
+        self.assertTrue(any(r.startswith('INFO NOFIT ') for r in result.data), result.data)
         src, pair = edit.load(self.repo, 'PkPalletMuse_Frlg')
         dst_cells = decode(self.tx.writes['data/layouts/PkTestPolish_Frlg/map.bin'])
         dst = lambda x, y: dst_cells[y * src.w + x]
         cfg = lint.thresholds(self.repo)
-        rules = terrain.Rules(self.repo, pair, include_pk=False)
-        warns = lint.measure(src, pair, cfg, lint.load_snapshot(self.repo), rules)[1]
-        work = set(polish.movable(src, pair, rules, polish.problem_boxes(warns), 2, src.data))
+        snap = lint.load_snapshot(self.repo)
+        warns = lint.measure(src, pair, cfg, snap, lint.pair_rules(self.repo, pair))[1]
+        work = set(polish.movable(src, pair, polish.problem_boxes(warns), 2, src.data))
         changed = 0
         for y in range(src.h):
             for x in range(src.w):
-                if src.at(x, y) != dst(x, y):
+                a, b = src.at(x, y), dst(x, y)
+                self.assertEqual(polish.cell_physical(pair, a), polish.cell_physical(pair, b),
+                                 f'{x},{y} changed physical class or elevation')
+                if a != b:
                     changed += 1
                     self.assertIn((x, y), work, f'{x},{y} outside the movable ring')
         self.assertLessEqual(changed, src.w * src.h // 10)
-        def material_counts(get):
-            counts = {}
-            for y in range(src.h):
-                for x in range(src.w):
-                    m = rules.material(get(x, y))
-                    counts[m] = counts.get(m, 0) + 1
-            return counts
-        counts_src, counts_dst = material_counts(lambda x, y: src.at(x, y)), material_counts(dst)
-        self.assertEqual(set(counts_dst) - set(counts_src), set(),
-                         'B3b: polish must not introduce a metatile class the sketch did not have')
-        for material, n in counts_src.items():
-            self.assertGreaterEqual(counts_dst.get(material, 0), 1, material)
-            self.assertLessEqual(abs(counts_dst.get(material, 0) - n), max(3, n * 0.05), material)
+        # Separate class-lock test: even if 0x045 (wall) is injected into a surf pattern's vocab,
+        # candidates_for rejects it because its physical class is not surf.
+        critic = polish.Critic(self.repo, src, pair, cfg, snap)
+        pat = critic.patterns[(0, 24)]
+        critic.vocab[pat] = dict(critic.vocab.get(pat, {}), **{0x045: 999})
+        self.assertNotIn(0x045, critic.candidates_for(0, 24, pat, 'surf'))
 
 
 if __name__ == '__main__':

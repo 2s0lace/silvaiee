@@ -54,6 +54,20 @@ button { cursor: pointer; } button:hover { border-color: var(--accent); }
 .err { color: var(--SEAM); }
 label { color: var(--muted); }
 #tbox { text-transform: none; font-family: ui-monospace, monospace; color: var(--text); }
+.sect { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 10px 6px 3px; }
+.legend span { cursor: pointer; user-select: none; } .legend span.off { opacity: .35; text-decoration: line-through; }
+.hint { color: var(--muted); font-size: 12px; }
+#pieces { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.piece { border: 2px solid var(--line); border-radius: 6px; padding: 3px; cursor: pointer; background: var(--bg); }
+.piece:hover { border-color: var(--accent); } .piece.on { border-color: var(--accent); background: var(--sel); }
+.piece img { display: block; width: 100%; image-rendering: pixelated; }
+.piece div { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ghost { position: absolute; display: none; image-rendering: pixelated; pointer-events: none;
+  outline: 2px solid var(--accent); opacity: .92; }
+.t { display: flex; gap: 6px; align-items: flex-start; } .t span { flex: 1; word-break: break-all; }
+.t button { padding: 0 6px; line-height: 18px; border-color: transparent; background: transparent; color: var(--muted); }
+.t button:hover { color: var(--SEAM); border-color: var(--line); }
+.row { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
 </style>
 </head>
 <body>
@@ -70,6 +84,7 @@ label { color: var(--muted); }
     <label><input type="checkbox" id="showLint" checked> Lint</label>
     <label><input type="checkbox" id="showGrid"> 15x10 screens</label>
     <span id="hover"></span>
+    <span class="hint">Drag a box to write a ticket or find a vanilla piece.</span>
     <div id="summary"></div>
   </div>
   <div id="stage">
@@ -77,6 +92,7 @@ label { color: var(--muted); }
       <img id="img" alt="">
       <canvas id="grid"></canvas>
       <div id="ov"></div>
+      <img id="ghost" alt="">
       <div id="drag"></div>
     </div>
   </div>
@@ -87,19 +103,24 @@ label { color: var(--muted); }
     <h2>New ticket <span id="tbox"></span></h2>
     <textarea id="note" placeholder="What is wrong here? e.g. shoreline too straight, add a bend"></textarea>
     <button id="save">Save ticket</button> <button id="cancel">Cancel</button>
+    <button id="find" title="pk kit fit: real vanilla pieces whose edges match this box">Find pieces</button>
+    <button id="auto" title="pk terrain auto: fill the box from its surroundings (water | box | grass becomes a shore)">Auto-fill</button>
     <div id="terr" class="err"></div>
+    <div id="pinfo" class="hint"></div>
+    <div id="pieces"></div>
   </div>
   <h2>Lint <span id="count"></span></h2>
   <div class="legend" id="legend"></div>
   <div id="warns"></div>
-  <h2>Tickets</h2>
+  <div class="row"><h2>Tickets</h2><button id="copyAll">Copy all</button></div>
   <div id="tickets"></div>
 </aside>
 
 <script>
 const $ = id => document.getElementById(id);
 const CHECKS = ['SEAM', 'RARE', 'STAIR', 'RECT', 'EMPTY'];
-let maps = [], cur = null, lint = [], zoom = 3, sel = null, drag = null;
+let maps = [], cur = null, lint = [], zoom = 3, sel = null, drag = null, tickets = [];
+const hidden = new Set();   // lint checks switched off in the legend
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -110,7 +131,6 @@ async function api(path, opts) {
 const color = c => getComputedStyle(document.documentElement).getPropertyValue('--' + c) || '#888';
 const T = () => 16 * zoom;   // one metatile in screen pixels
 
-$('legend').innerHTML = CHECKS.map(c => `<span><i style="background:${color(c)}"></i>${c}</span>`).join('');
 
 async function loadMaps() {
   try { maps = (await api('/api/maps')).maps; } catch (e) { $('maps').innerHTML = `<div class="err">${e.message}</div>`; return; }
@@ -121,9 +141,12 @@ async function loadMaps() {
 }
 function drawMaps() {
   const f = $('filter').value.toLowerCase();
-  $('maps').innerHTML = maps.filter(m => m.name.toLowerCase().includes(f)).map(m =>
-    `<div class="map${cur && cur.name === m.name ? ' on' : ''}" data-n="${m.name}" title="${m.name}">
-      ${m.name.replace(/_Frlg$/, '')} <small>${m.w}x${m.h}</small></div>`).join('');
+  const row = m => `<div class="map${cur && cur.name === m.name ? ' on' : ''}" data-n="${m.name}" title="${m.name}">
+      ${m.name.replace(/_Frlg$/, '')} <small>${m.w}x${m.h}</small></div>`;
+  const shown = maps.filter(m => m.name.toLowerCase().includes(f));
+  const drafts = shown.filter(m => m.name.startsWith('Pk')), vanilla = shown.filter(m => !m.name.startsWith('Pk'));
+  $('maps').innerHTML = (drafts.length ? `<div class="sect">Drafts ${drafts.length}</div>` + drafts.map(row).join('') : '')
+    + (vanilla.length ? `<div class="sect">Vanilla ${vanilla.length}</div>` + vanilla.map(row).join('') : '');
 }
 $('filter').oninput = drawMaps;
 $('maps').onclick = e => { const d = e.target.closest('.map'); if (d) openMap(d.dataset.n); };
@@ -157,7 +180,7 @@ function drawBoxes() {
   const ov = $('ov'); ov.innerHTML = '';
   if (!$('showLint').checked) return;
   lint.forEach((it, i) => {
-    if (it.x < 0) return;
+    if (it.x < 0 || hidden.has(it.check)) return;
     const b = document.createElement('div');
     b.className = 'box' + (i === sel ? ' hot' : '');
     Object.assign(b.style, { left: it.x * T() + 'px', top: it.y * T() + 'px',
@@ -169,11 +192,17 @@ function drawBoxes() {
 function drawWarns() {
   const n = c => lint.filter(i => i.check === c).length;
   $('count').textContent = `(${lint.filter(i => i.check !== 'INFO').length})`;
-  $('legend').innerHTML = CHECKS.map(c => `<span><i style="background:${color(c)}"></i>${c} ${n(c)}</span>`).join('');
-  $('warns').innerHTML = lint.map((it, i) =>
+  $('legend').innerHTML = CHECKS.map(c =>
+    `<span data-c="${c}" class="${hidden.has(c) ? 'off' : ''}" title="Show or hide ${c}"><i style="background:${color(c)}"></i>${c} ${n(c)}</span>`).join('');
+  $('warns').innerHTML = lint.map((it, i) => hidden.has(it.check) ? '' :
     `<div class="warn" data-i="${i}" style="border-color:${color(it.check)}">${esc(it.text)}</div>`).join('')
     || '<div style="color:var(--muted)">Clean.</div>';
 }
+$('legend').onclick = e => {
+  const c = e.target.closest('span[data-c]')?.dataset.c; if (!c) return;
+  hidden.has(c) ? hidden.delete(c) : hidden.add(c);
+  drawWarns(); drawBoxes();
+};
 $('warns').onclick = e => {
   const d = e.target.closest('.warn'); if (!d) return;
   sel = +d.dataset.i; drawBoxes();
@@ -208,10 +237,52 @@ function showDrag(b = box()) {
 let pending = null;
 function openTicket(b) {
   pending = b; $('ticket').style.display = 'block'; $('terr').textContent = '';
+  $('pieces').innerHTML = ''; $('pinfo').textContent = ''; hideGhost();
   $('tbox').textContent = b.w === 1 && b.h === 1 ? `@${b.x},${b.y}` : `${b.x},${b.y}-${b.w}x${b.h}`;
   $('note').focus();
 }
-function closeTicket() { pending = null; $('ticket').style.display = 'none'; $('drag').style.display = 'none'; $('note').value = ''; }
+function closeTicket() {
+  pending = null; $('ticket').style.display = 'none'; $('drag').style.display = 'none'; $('note').value = '';
+  $('pieces').innerHTML = ''; $('pinfo').textContent = ''; hideGhost();
+}
+
+// --- vanilla pieces for the box (pk kit fit); picking one only writes it into the ticket note ---
+let found = [];
+const boxText = b => `${b.x},${b.y},${b.w}x${b.h}`;
+$('find').onclick = async () => {
+  if (!pending) return;
+  $('pieces').innerHTML = ''; $('pinfo').textContent = 'searching...'; hideGhost();
+  try {
+    const r = await api(`/api/fit/${encodeURIComponent(cur.name)}?box=${boxText(pending)}&limit=8`);
+    found = r.pieces;
+    $('pinfo').innerHTML = esc(r.summary.replace(/^fit \S+ \S+ /, '')) +
+      r.info.map(l => `<br>${esc(l)}`).join('') + (found.length ? '<br>Click one to preview it in place.' : '');
+    $('pieces').innerHTML = found.map((p, i) => `<div class="piece" data-i="${i}" title="${esc(p.cmd)}">
+      <img src="/api/render/${encodeURIComponent(p.map)}.png?scale=2&rect=${boxText(p)}" alt="">
+      <div>${esc(p.map.replace(/_Frlg$/, ''))} ${p.x},${p.y}</div>
+      <div>${p.w}x${p.h} ${esc(p.features.join(' ') || 'plain')}${p.curvy ? ' curvy:' + p.curvy : ''}</div></div>`).join('');
+  } catch (e) { $('pinfo').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+};
+$('auto').onclick = () => {
+  if (!pending) return;
+  document.querySelectorAll('.piece').forEach(n => n.classList.remove('on')); hideGhost();
+  $('note').value = `auto-fill from surroundings: pk terrain auto ${cur.name} ${boxText(pending)}`;
+  $('note').focus();
+};
+$('pieces').onclick = e => {
+  const d = e.target.closest('.piece'); if (!d) return;
+  const p = found[+d.dataset.i];
+  document.querySelectorAll('.piece').forEach(n => n.classList.toggle('on', n === d));
+  $('note').value = `replace with vanilla piece ${p.map} ${boxText(p)}: ${p.cmd}`;
+  showGhost(p);
+};
+function showGhost(p) {
+  const g = $('ghost');
+  g.src = `/api/render/${encodeURIComponent(p.map)}.png?scale=2&rect=${boxText(p)}`;
+  Object.assign(g.style, { display: 'block', left: pending.x * T() + 'px', top: pending.y * T() + 'px',
+    width: p.w * T() + 'px', height: p.h * T() + 'px' });
+}
+function hideGhost() { $('ghost').style.display = 'none'; }
 $('cancel').onclick = closeTicket;
 $('note').onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('save').click(); if (e.key === 'Escape') closeTicket(); };
 $('save').onclick = async () => {
@@ -223,17 +294,38 @@ $('save').onclick = async () => {
 };
 async function loadTickets() {
   try {
-    const t = (await api('/api/tickets')).tickets;
-    $('tickets').innerHTML = t.slice().reverse().map(l => `<div class="t">${esc(l)}</div>`).join('')
-      || '<div style="color:var(--muted)">Drag a box on the map to write one.</div>';
+    tickets = (await api('/api/tickets')).tickets;
+    drawTickets();
   } catch (e) { $('tickets').innerHTML = `<div class="err">${e.message}</div>`; }
 }
 
+function drawTickets() {
+  $('tickets').innerHTML = tickets.map((l, i) => `<div class="t"><span>${esc(l)}</span>
+      <button data-i="${i}" title="Remove this ticket">×</button></div>`).reverse().join('')
+    || '<div style="color:var(--muted)">Drag a box on the map to write one.</div>';
+}
+$('tickets').onclick = async e => {
+  const b = e.target.closest('button[data-i]'); if (!b) return;
+  const i = +b.dataset.i;
+  try {
+    tickets = (await api('/api/ticket/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index: i, line: tickets[i] }) })).tickets;
+    drawTickets();
+  } catch (err) { alert(err.message); loadTickets(); }
+};
+$('copyAll').onclick = async () => {
+  try { await navigator.clipboard.writeText(tickets.join('\n') + '\n'); $('copyAll').textContent = 'Copied'; }
+  catch { $('copyAll').textContent = 'Copy failed'; }
+  setTimeout(() => $('copyAll').textContent = 'Copy all', 1500);
+};
 $('zoom').onchange = () => {
   const s = document.querySelector('section'), k = +$('zoom').value / zoom;
   const cx = s.scrollLeft + s.clientWidth / 2, cy = s.scrollTop + s.clientHeight / 2;
   zoom = +$('zoom').value;
-  if (cur) { layout(); if (pending) showDrag(pending); }
+  if (cur) {
+    layout();
+    if (pending) { showDrag(pending); const on = document.querySelector('.piece.on'); if (on) showGhost(found[+on.dataset.i]); }
+  }
   s.scrollTo(cx * k - s.clientWidth / 2, cy * k - s.clientHeight / 2);   // keep the same spot centred
 };
 window.onhashchange = () => {

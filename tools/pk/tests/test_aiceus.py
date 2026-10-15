@@ -136,6 +136,48 @@ class Aiceus(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertTrue(doc['error'].startswith('PARSE'), doc)
 
+    def test_render_rect(self):
+        status, ctype, body = self.call('/api/render/PalletTown_Frlg.png?scale=2&rect=2,3,8x6')
+        self.assertEqual((status, ctype), (200, 'image/png'))
+        self.assertEqual(int.from_bytes(body[16:20], 'big'), 8 * 16 * 2)          # PNG IHDR width
+        self.assertEqual(self.call('/api/render/PalletTown_Frlg.png?rect=20,18,8x8')[0], 400)
+        self.assertEqual(self.call('/api/render/PalletTown_Frlg.png?rect=2;3')[0], 400)
+
+    def test_fit_pieces(self):
+        # Every pk kit fit hit becomes a piece with its copy command; INFO lines are passed on.
+        status, doc = self.json_call('/api/fit/PkPalletDeepSeek_Frlg?box=0,21,8x6&limit=5')
+        self.assertEqual(status, 200)
+        hits = int(re.search(r'matches (\d+)', doc['summary']).group(1))
+        self.assertTrue(1 <= len(doc['pieces']) <= min(hits, 5), doc)
+        for piece in doc['pieces']:
+            self.assertEqual((piece['w'], piece['h']), (8, 6))        # exact size wins over kit's near sizes
+            self.assertTrue(piece['cmd'].startswith('pk map copy PkPalletDeepSeek_Frlg '), piece)
+            self.assertFalse(piece['map'].startswith('Pk'), piece)                # vanilla sources only
+        self.assertFalse([l for l in doc['info'] if 'could not parse' in l], doc['info'])
+        self.assertEqual(self.json_call('/api/fit/PkPalletDeepSeek_Frlg?box=0,21,80x6')[0], 400)
+        self.assertEqual(self.json_call('/api/fit/NoSuchMap_Frlg?box=0,0,2x2')[0], 404)
+
+    def test_fit_small_box_gets_exact_size(self):
+        # A 3x2 box gets 3x2 pieces, relaxing the edges if needed, never a bigger piece.
+        status, doc = self.json_call('/api/fit/PkPalletDeepSeek_Frlg?box=6,6,3x2&limit=4')
+        self.assertEqual(status, 200)
+        self.assertTrue(doc['pieces'], doc)
+        self.assertEqual({(p['w'], p['h']) for p in doc['pieces']}, {(3, 2)})
+        for piece in doc['pieces']:
+            self.assertTrue(piece['cmd'].endswith(f'6,6 --from {piece["map"]} --repair'), piece)
+
+    def test_ticket_delete(self):
+        line = self.json_call('/api/ticket', {'map': 'PalletTown_Frlg', 'x': 5, 'y': 5,
+                                              'w': 2, 'h': 2, 'note': 'to be removed'})[1]['line']
+        tickets = self.json_call('/api/tickets')[1]['tickets']
+        index = tickets.index(line)
+        status, doc = self.json_call('/api/ticket/delete', {'index': index, 'line': 'not that line'})
+        self.assertEqual(status, 404)                       # a stale page can't delete the wrong ticket
+        status, doc = self.json_call('/api/ticket/delete', {'index': index, 'line': line})
+        self.assertEqual(status, 200)
+        self.assertNotIn(line, doc['tickets'])
+        self.assertEqual(len(doc['tickets']), len(tickets) - 1)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -11,10 +11,11 @@ score is the number of checks that fire.
 """
 import json
 import math
+import re
 
 from ..core.errors import PkError
 from ..core.out import Result
-from .edit import load
+from .edit import load, usage
 from .grid import decode
 from .layers import class_of, events
 from .terrain import Rules
@@ -22,8 +23,41 @@ from .tiles import Pair
 
 LINT_JSON = 'tools/pk/data/lint_map.json'
 SNAPSHOT_JSON = 'tools/pk/data/vanilla_adjacency.json'
-SNAPSHOT_VERSION = 3      # v3 adds the boundary vocabulary (material pairs -> vanilla boundary tiles)
+SNAPSHOT_VERSION = 4      # v4 adds physical classes, 3x3 class-pattern vocabulary and odd-tile p95
 PK_LAYOUT = 'LAYOUT_PK_'
+LEDGE_DIR = {'JUMP_SOUTH': 's', 'JUMP_NORTH': 'n', 'JUMP_EAST': 'e', 'JUMP_WEST': 'w'}
+
+
+def physical_class(behavior, collision):
+    """Physical class of a cell or metatile from game data only (never names or tags):
+    walk | surf | ledge_<e|w|n|s> | wall | grass_enc | door."""
+    for key, direction in LEDGE_DIR.items():
+        if key in behavior:
+            return f'ledge_{direction}'
+    if re.search(r'DOOR|WARP|LADDER|STAIRS', behavior):
+        return 'door'
+    if collision:
+        return 'wall'
+    if re.search(r'WATER|OCEAN|POND|CURRENT|SEAWEED|PUDDLE', behavior) and 'SHALLOW' not in behavior:
+        return 'surf'
+    if 'GRASS' in behavior:
+        return 'grass_enc'
+    return 'walk'
+
+
+def metatile_physical(repo, pair, metatile):
+    """(physical_class, dominant_collision, dominant_elevation) of `metatile` from vanilla usage."""
+    stats = usage(repo, pair).get(metatile, {})
+    if stats:
+        by_coll, by_elev = {}, {}
+        for (c, e), n in stats.items():
+            by_coll[c] = by_coll.get(c, 0) + n
+            by_elev[e] = by_elev.get(e, 0) + n
+        coll = max(by_coll, key=lambda c: (by_coll[c], -c))
+        elev = max(by_elev, key=lambda e: (by_elev[e], -e))
+    else:
+        coll, elev = 0, 0
+    return physical_class(pair.behavior_name(metatile), coll), coll, elev
 
 CHECKS = [('natural', list), ('decor_tags', list), ('stair_min_steps', int), ('stair_min_run', int),
           ('straight_max', int), ('straight_types', list), ('dash_min_run', int), ('dash_min_gap', int),
@@ -163,8 +197,11 @@ class PairStats:
         self.metatiles = set(data['metatiles'])
         self.h = {tuple(int(v) for v in k.split(',')): c for k, c in data['h'].items()}
         self.v = {tuple(int(v) for v in k.split(',')): c for k, c in data['v'].items()}
-        self.windows = data.get('w') or {}      # 3x3 window key -> number of distinct vanilla layouts
-        self.vocab = data.get('vocab') or {}    # "A|B" material pair -> [metatiles vanilla uses there]
+        self.windows = data.get('w') or {}          # 3x3 window key -> number of distinct vanilla layouts
+        self.vocab = {pat: {int(m): c for m, c in d.items()}
+                      for pat, d in (data.get('vocab') or {}).items() if isinstance(d, dict)}
+        self.physical = {int(m): tuple(v) for m, v in (data.get('physical') or {}).items()}
+        self.odd_p95 = float(data.get('odd_p95', 61.2))
 
 
 class Snap:
@@ -553,8 +590,16 @@ def stats(values):
     return dict(p50=pct(0.5), p95=pct(0.95), max=values[-1], n=n)
 
 
+def pattern_at(cls, w, h, x, y):
+    """3x3 physical-class pattern around (x,y), clamping out-of-bounds to the nearest edge cell."""
+    return '|'.join(cls[(min(max(x + dx, 0), w - 1), min(max(y + dy, 0), h - 1))]
+                    for dy in (-1, 0, 1) for dx in (-1, 0, 1))
+
+
 def build_pairs(repo):
-    """h/v/diagonal pair counts + known metatile ids per tileset pair, from vanilla layouts only."""
+    """h/v/diagonal pair counts + known metatile ids + physical classes + 3x3 class-pattern
+    vocabulary + leave-one-out odd-tile p95 per tileset pair, from vanilla layouts only."""
+    from .meta import all_ids, draw
     pairs = {}
     pair_cache = {}
     for lid, layout in repo.layouts().items():
@@ -567,7 +612,8 @@ def build_pairs(repo):
         except PkError:
             continue
         entry = pairs.setdefault(key, dict(layouts=0, metatiles=set(),
-                                           h={}, v={}, ne={}, nw={}, se={}, sw={}, w={}, vocab={}))
+                                           h={}, v={}, ne={}, nw={}, se={}, sw={}, w={},
+                                           vocab={}, physical={}, odd_p95=61.2))
         entry['layouts'] += 1
         pair = None
         if isinstance(layout.get('primary_tileset'), str) and isinstance(layout.get('secondary_tileset'), str):
@@ -578,8 +624,6 @@ def build_pairs(repo):
                     pair_cache[key] = None    # a layout whose secondary is "0" or unregistered
             pair = pair_cache[key]
         layout_windows = set()
-        material = ({(x, y): material_of(pair, cells[y * w + x][0], cells[y * w + x][1])
-                     for y in range(h) for x in range(w)} if pair is not None else {})
         for y in range(h):
             for x in range(w):
                 a = cells[y * w + x][0]
@@ -602,15 +646,6 @@ def build_pairs(repo):
                 if x > 0 and y + 1 < h:
                     k = f'{a},{cells[(y + 1) * w + x - 1][0]}'
                     entry['sw'][k] = entry['sw'].get(k, 0) + 1
-                # Boundary vocabulary: this cell's metatile is what vanilla uses at a spot whose
-                # 3x3 neighbourhood contains this pair of materials.
-                if pair is not None:
-                    neigh = {material[(x + dx, y + dy)] for dx in (-1, 0, 1) for dy in (-1, 0, 1)
-                             if 0 <= x + dx < w and 0 <= y + dy < h}
-                    for first in neigh:
-                        for second in neigh:
-                            if first < second:
-                                entry['vocab'].setdefault(f'{first}|{second}', set()).add(a)
         # 3x3 windows counted once per distinct layout, so leave-one-out can subtract one map.
         for y in range(h - 2):
             for x in range(w - 2):
@@ -618,9 +653,105 @@ def build_pairs(repo):
                                                for dy in range(3) for dx in range(3)]))
         for k in layout_windows:
             entry['w'][k] = entry['w'].get(k, 0) + 1
+
+    # Physical classes for every valid metatile of each pair.
+    for key, entry in pairs.items():
+        pair = pair_cache.get(key)
+        if pair is None:
+            continue
+        for mt in all_ids(pair):
+            pcls, coll, elev = metatile_physical(repo, pair, mt)
+            entry['physical'][str(mt)] = [pcls, coll, elev]
+
+    # 3x3 physical-class pattern vocabulary over all vanilla outdoor layouts (never Pk*),
+    # plus leave-one-out odd-tile p95 threshold over vanilla outdoor maps.
+    outdoor_layouts = {}
+    maps_data = repo.maps()
+    layouts_data = repo.layouts()
+    for name, _ in vanilla_outdoor(repo):
+        lid = maps_data[name]['layout']
+        if lid not in outdoor_layouts:
+            layout = layouts_data[lid]
+            key = layout['primary_tileset'] + '+' + layout['secondary_tileset']
+            pair = pair_cache.get(key)
+            if pair is None:
+                continue
+            w, h = layout['width'], layout['height']
+            cells = decode(repo.read(layout['blockdata_filepath'])[:w * h * 2])
+            cls = {(x, y): physical_class(pair.behavior_name(cells[y * w + x][0]), cells[y * w + x][1])
+                   for y in range(h) for x in range(w)}
+            pats = {(x, y): pattern_at(cls, w, h, x, y) for y in range(h) for x in range(w)}
+            outdoor_layouts[lid] = (key, pair, w, h, cells, pats)
+
+    primary_vocab = {}    # (primary_symbol, pattern) -> {mt (<640): count}
+    pair_vocab = {}       # (pair_key, pattern) -> {mt: count}
+    layout_vocab = {}     # (lid, pattern) -> {mt: count}
+    for lid, (key, pair, w, h, cells, pats) in outdoor_layouts.items():
+        prim = pair.primary['symbol']
+        limit = pair.limits['metatiles']
+        for y in range(h):
+            for x in range(w):
+                mt = cells[y * w + x][0]
+                pat = pats[(x, y)]
+                d_pair = pair_vocab.setdefault((key, pat), {})
+                d_pair[mt] = d_pair.get(mt, 0) + 1
+                d_lay = layout_vocab.setdefault((lid, pat), {})
+                d_lay[mt] = d_lay.get(mt, 0) + 1
+                if mt < limit:
+                    d_prim = primary_vocab.setdefault((prim, pat), {})
+                    d_prim[mt] = d_prim.get(mt, 0) + 1
+
+    for key, entry in pairs.items():
+        pair = pair_cache.get(key)
+        if pair is None:
+            continue
+        prim = pair.primary['symbol']
+        limit = pair.limits['metatiles']
+        vocab = {}
+        for (p_sym, pat), counts in primary_vocab.items():
+            if p_sym == prim:
+                vocab[pat] = {str(mt): c for mt, c in counts.items()}
+        for (p_key, pat), counts in pair_vocab.items():
+            if p_key == key:
+                dest = vocab.setdefault(pat, {})
+                for mt, c in counts.items():
+                    if mt >= limit or str(mt) not in dest:
+                        dest[str(mt)] = c
+        entry['vocab'] = vocab
+
+    # Leave-one-out odd-tile score over all vanilla outdoor maps (mean RGB distance to average
+    # vanilla render for the same 3x3 class pattern with the layout's own counts subtracted).
+    render_cache = {}
+    def flat_rgb(key, pair, mt):
+        ck = (pair.primary['symbol'], mt) if mt < pair.limits['metatiles'] else (key, mt)
+        if ck not in render_cache:
+            render_cache[ck] = tuple(v for row in draw(repo, pair, mt) for p in row for v in (p or (0, 0, 0)))
+        return render_cache[ck]
+
+    loo_dists = []
+    for lid, (key, pair, w, h, cells, pats) in outdoor_layouts.items():
+        for mt in {c[0] for c in cells}:
+            flat_rgb(key, pair, mt)
+    for lid, (key, pair, w, h, cells, pats) in outdoor_layouts.items():
+        seen_pats = {pats[(x, y)] for y in range(h) for x in range(w)}
+        for pat in seen_pats:
+            own = layout_vocab.get((lid, pat), {})
+            full = pair_vocab.get((key, pat), {})
+            rem = {mt: c - own.get(mt, 0) for mt, c in full.items() if c - own.get(mt, 0) > 0}
+            if not rem:
+                continue
+            total = sum(rem.values())
+            avg = tuple(sum(flat_rgb(key, pair, mt)[i] * c for mt, c in rem.items()) / total for i in range(768))
+            for mt, c in own.items():
+                rgb = flat_rgb(key, pair, mt)
+                dist = sum(abs(rgb[i] - avg[i]) for i in range(768)) / 768.0
+                loo_dists.extend([dist] * c)
+    loo_dists.sort()
+    odd_p95 = round(loo_dists[min(len(loo_dists) - 1, int(round(0.95 * (len(loo_dists) - 1))))], 2) if loo_dists else 61.2
+
     for entry in pairs.values():
         entry['metatiles'] = sorted(entry['metatiles'])
-        entry['vocab'] = {k: sorted(v) for k, v in entry['vocab'].items()}
+        entry['odd_p95'] = odd_p95
     return pairs
 
 

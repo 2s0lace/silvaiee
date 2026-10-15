@@ -11,8 +11,11 @@ Routes (all JSON unless noted; errors are {"ok": false, "error": "CODE message"}
   GET  /api/maps                          outdoor FRLG maps and Pk* maps
   GET  /api/map/NAME                      size, stratum, lint summary + parsed WARN/INFO
   GET  /api/render/NAME.png?scale=1..4    the PNG rendered by pk (cached until the map changes)
+  GET  /api/render/NAME.png?scale=2&rect=x,y,WxH   one box of the map (piece thumbnails)
+  GET  /api/fit/NAME?box=x,y,WxH&limit=8  vanilla pieces that fit the box (`pk kit fit`)
   GET  /api/tickets                       the lines of .pk/aiceus/tickets.md
   POST /api/ticket                        {"map","x","y","w","h","note"} -> appended line
+  POST /api/ticket/delete                 {"index", "line"} -> removes that line (must match exactly)
 """
 import argparse
 import json
@@ -30,6 +33,8 @@ OUTDOOR = {'MAP_TYPE_TOWN', 'MAP_TYPE_CITY', 'MAP_TYPE_ROUTE', 'MAP_TYPE_OCEAN_R
 SCALES = (1, 2, 3, 4)
 POS_RE = re.compile(r'@(\d+),(\d+)')
 BOX_RE = re.compile(r'(\d+),(\d+)-(\d+),(\d+)')
+RECT_RE = re.compile(r'^(\d+),(\d+),(\d+)x(\d+)$')
+HIT_RE = re.compile(r'^(\S+) (\d+),(\d+),(\d+)x(\d+) (\S+) (\S+) curvy:(\d+)$')
 PLACEHOLDER = ('<!doctype html><meta charset="utf-8"><title>aiceus</title>'
                '<p>aiceus backend is running. aiceus/index.html is not installed yet.</p>\n')
 
@@ -146,21 +151,113 @@ def _newest_mtime(path):
     return newest
 
 
-def api_render(cfg, name, scale):
+def parse_rect(text, info, name):
+    """'x,y,WxH' -> (x, y, w, h), checked against the map size."""
+    hit = RECT_RE.match(text or '')
+    if not hit:
+        raise ApiError('PARSE', 'box must look like x,y,WxH')
+    x, y, w, h = (int(v) for v in hit.groups())
+    if w < 1 or h < 1 or x + w > info['w'] or y + h > info['h']:
+        raise ApiError('BOUNDS', f'box {text} is outside {name} {info["w"]}x{info["h"]}')
+    return x, y, w, h
+
+
+_render_lock = threading.Lock()
+
+
+def api_render(cfg, name, scale, rect=None):
     table = catalog(cfg)
     if name not in table:
         raise ApiError('NOTFOUND', f'no map {name}')
     if scale not in SCALES:
         raise ApiError('PARSE', f'scale must be one of {SCALES}')
-    png = cfg.root/'.pk'/'render'/f'{name}.s{scale}.png'
+    extra, suffix = [], ''
+    if rect is not None:
+        x, y, w, h = parse_rect(rect, table[name], name)
+        extra, suffix = ['--rect', f'{x},{y},{w}x{h}'], f'.r{x}_{y}_{w}x{h}'
+    png = cfg.root/'.pk'/'render'/f'{name}.s{scale}{suffix}.png'
     fresh = (png.is_file()
              and png.stat().st_mtime >= _newest_mtime(cfg.root/'data/maps'/name)
              and png.stat().st_mtime >= _newest_mtime(cfg.root/table[name]['layout_dir']))
     if not fresh:
-        run_pk(cfg, ['map', 'render', name, '--scale', str(scale), '--out', f'.pk/render/{name}.s{scale}.png'])
+        with _render_lock:          # parallel thumbnail requests made concurrent pk renders fail
+            run_pk(cfg, ['map', 'render', name, *extra, '--scale', str(scale),
+                         '--out', f'.pk/render/{name}.s{scale}{suffix}.png'])
     if not png.is_file():
         raise ApiError('INTERNAL', f'pk map render produced no PNG for {name}')
     return png.read_bytes()
+
+
+def _parse_hits(rows):
+    """pk kit fit/find rows -> (pieces, infos). Each hit line is followed by its copy command."""
+    pieces, infos, unparsed = [], [], []
+    for row in rows:
+        hit = HIT_RE.match(row)
+        if hit:
+            src, px, py, pw, ph, pair, features, curvy = hit.groups()
+            pieces.append({'map': src, 'x': int(px), 'y': int(py), 'w': int(pw), 'h': int(ph), 'pair': pair,
+                           'features': [] if features == '-' else features.split(','),
+                           'curvy': int(curvy), 'cmd': ''})
+        elif row.startswith('pk map copy ') and pieces and not pieces[-1]['cmd']:
+            pieces[-1]['cmd'] = row
+        elif row.startswith('INFO'):
+            infos.append(row)
+        else:
+            unparsed.append(row)               # never drop a line silently
+    return pieces, infos + [f'INFO aiceus could not parse: {row}' for row in unparsed]
+
+
+def api_fit(cfg, name, box, limit):
+    """`pk kit fit` for the box. If nothing fits exactly, relax step by step with `pk kit find`
+    (same tileset pair always, since map copy --from needs it) and say which step answered."""
+    table = catalog(cfg)
+    if name not in table:
+        raise ApiError('NOTFOUND', f'no map {name}')
+    x, y, w, h = parse_rect(box, table[name], name)
+    if not limit.isdigit() or not 1 <= int(limit) <= 30:
+        raise ApiError('PARSE', 'limit must be 1..30')
+    doc, rows = run_pk_pages(cfg, ['kit', 'fit', name, f'{x},{y},{w}x{h}', '--limit', limit])
+    summary = doc.get('summary', '')
+    pieces, infos = _parse_hits(rows)
+    exact = [p for p in pieces if (p['w'], p['h']) == (w, h)]
+    if exact:          # kit also returns near sizes (+-2); a piece the exact size of the box is what the user drew
+        return {'ok': True, 'summary': summary, 'pieces': exact, 'info': infos, 'relaxed': ''}
+
+    edges = [f'--{side}={cls}' for side, cls in re.findall(r'\b(top|bottom|left|right)=(\S+)', summary)
+             if cls not in ('free', 'mixed')]
+    steps = [('same size, any edges', ['--size', f'{w}x{h}']),     # size first: a piece must fit the box
+             ('same edges, any size', [*edges]),
+             ('any piece with this tileset', [])]
+    info = table[name]
+    for label, extra in steps:
+        if not extra and label != steps[-1][0]:
+            continue
+        find_args = ['kit', 'find', '--pair', name, *[a for e in extra for a in e.split('=', 1)],
+                     '--limit', '30']
+        _doc, found_rows = run_pk_pages(cfg, find_args)
+        found, found_infos = _parse_hits(found_rows)
+        # Keep pieces that fit inside the map when pasted at the box corner; fill in target and spot.
+        fits = [p for p in found if x + p['w'] <= info['w'] and y + p['h'] <= info['h']]
+        fits.sort(key=lambda p: abs(p['w'] - w) + abs(p['h'] - h))     # closest to the box size first
+        if any((p['w'], p['h']) == (w, h) for p in fits):
+            fits = [p for p in fits if (p['w'], p['h']) == (w, h)]
+        elif pieces:       # no exact size anywhere: kit fit's near sizes at least match the edges
+            return {'ok': True, 'summary': summary, 'pieces': pieces, 'relaxed': 'near sizes',
+                    'info': infos + [f'INFO no piece is exactly {w}x{h}; showing near sizes that match the edges']}
+        elif fits:
+            infos.append(f'INFO no piece is exactly {w}x{h}; showing the closest sizes')
+        dropped = len(found) - len(fits)
+        if not fits:
+            infos.append(f'INFO tried {label}: {len(found)} pieces, none fit inside the map at {x},{y}')
+            continue
+        for p in fits:
+            p['cmd'] = (f'pk map copy {name} {p["x"]},{p["y"]},{p["w"]}x{p["h"]} {x},{y} '
+                        f'--from {p["map"]} --repair')
+        infos.append(f'INFO no exact fit; relaxed to {label}' +
+                     (f' ({dropped} too big for this spot left out)' if dropped else ''))
+        return {'ok': True, 'summary': summary, 'pieces': fits[:int(limit)], 'info': infos + found_infos,
+                'relaxed': label}
+    return {'ok': True, 'summary': summary, 'pieces': [], 'info': infos, 'relaxed': 'nothing found'}
 
 
 def _ticket_line(name, x, y, w, h, note):
@@ -191,6 +288,19 @@ def post_ticket(cfg, payload):
     with open(cfg.tickets, 'a', encoding='utf-8') as handle:
         handle.write(line + '\n')
     return {'ok': True, 'line': line}
+
+
+def delete_ticket(cfg, payload):
+    """Remove one line; the caller must send the exact text, so a stale page can't delete the wrong one."""
+    if not isinstance(payload, dict) or not isinstance(payload.get('index'), int):
+        raise ApiError('PARSE', 'body must be {"index": n, "line": "..."}')
+    lines = api_tickets(cfg)['tickets']
+    index = payload['index']
+    if not 0 <= index < len(lines) or lines[index] != payload.get('line'):
+        raise ApiError('NOTFOUND', 'that ticket is not there any more; reload')
+    del lines[index]
+    cfg.tickets.write_text(''.join(line + '\n' for line in lines), encoding='utf-8')
+    return {'ok': True, 'tickets': lines}
 
 
 def api_tickets(cfg):
@@ -238,9 +348,15 @@ class Handler(BaseHTTPRequestHandler):
                 scale = (query.get('scale') or ['1'])[0]
                 if not scale.isdigit():
                     raise ApiError('PARSE', 'scale must be an integer')
-                self._send(200, 'image/png', api_render(cfg, rest[:-4], int(scale)))
+                rect = (query.get('rect') or [None])[0]
+                self._send(200, 'image/png', api_render(cfg, rest[:-4], int(scale), rect))
+            elif method == 'GET' and path.startswith('/api/fit/'):
+                self._json(api_fit(cfg, unquote(path[len('/api/fit/'):]), (query.get('box') or [''])[0],
+                                   (query.get('limit') or ['8'])[0]))
             elif method == 'GET' and path == '/api/tickets':
                 self._json(api_tickets(cfg))
+            elif method == 'POST' and path == '/api/ticket/delete':
+                self._json(delete_ticket(cfg, self._body()))
             elif method == 'POST' and path == '/api/ticket':
                 self._json(post_ticket(cfg, self._body()))
             else:

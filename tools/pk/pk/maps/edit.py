@@ -306,9 +306,14 @@ def command(repo, tx, args, opts):
     if verb == 'copy' and len(rest) == 3:
         grid, pair = load(repo, rest[0])
         source, src_pair = (load(repo, opts['from']) if opts.get('from') else (grid, pair))
-        if (src_pair.primary['symbol'], src_pair.secondary['symbol']) != (pair.primary['symbol'], pair.secondary['symbol']):
-            raise PkError('CONFLICT', 'copy needs both maps on the same tileset pair')
         sx, sy, w, h = area(rest[1], source)
+        if (src_pair.primary['symbol'], src_pair.secondary['symbol']) != (pair.primary['symbol'], pair.secondary['symbol']):
+            same_primary = src_pair.primary['symbol'] == pair.primary['symbol']
+            blocked = sorted({source.at(sx + i, sy + j)[0] for j in range(h) for i in range(w)
+                              if not same_primary or source.at(sx + i, sy + j)[0] >= src_pair.limits['metatiles']})
+            if blocked:
+                raise PkError('CONFLICT', 'copy needs a shared primary and portable box; blocked ids: '
+                              + ', '.join(f'0x{mt:03X}' for mt in blocked))
         dx, dy = point(rest[2], grid)
         if not grid.inside(dx + w - 1, dy + h - 1):
             raise PkError('BOUNDS', f'copy target {dx},{dy},{w}x{h} outside {grid.w}x{grid.h}')

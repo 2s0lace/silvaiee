@@ -133,7 +133,7 @@ def dispatch(repo, tx, argv):
             raise PkError('PARSE', 'usage: pk meta ls|name|autoname|show')
         result = map_meta.command(repo, tx, args, opts, pagination)
     elif noun == 'terrain':
-        args, opts = options(tail, values=('offset', 'limit', 'rect', 'dir', 'stamp'))
+        args, opts = options(tail, values=('offset', 'limit', 'rect', 'dir', 'stamp', 'diag'))
         if not args:
             raise PkError('PARSE', 'usage: pk terrain learn|show|brush|river|ledge|forest|bake')
         result = map_terrain.command(repo, tx, args, opts, pagination)
@@ -182,6 +182,13 @@ def dispatch(repo, tx, argv):
         if len(args) > 1:
             raise PkError('PARSE', 'usage: pk check [map|all] [--warnings]')
         result = map_check.run(repo, tx, args[0] if args else 'all', opts, pagination)
+    elif noun == 'kit':
+        args, opts = options(tail, values=('size', 'top', 'bottom', 'left', 'right', 'feature', 'pair', 'limit'),
+                             flags=('sheet',))
+        if not args:
+            raise PkError('PARSE', 'usage: pk kit index | find [filters] | fit MAP x,y,WxH')
+        from pk.maps import kit as map_kit
+        result = map_kit.command(repo, args, opts)
     else:
         raise PkError('PARSE', f'unsupported command {noun}; use pk help')
     return result, dict(tx.writes)

@@ -345,8 +345,58 @@ def apply(repo, tx, grid, pair, rules, targets, label, frozen=frozenset()):
     return Result(f'terrain {label} {grid.name} {len(targets)} cells, {len(changed)} metatiles changed', rows)
 
 
+AUTO_MIN_FREQ = 3        # auto-fill candidates: metatiles vanilla used at least this often in the pair
+
+
+def auto(repo, tx, query, box_text, diag_weight=0.5):
+    """Fill a box from its surroundings: every cell may become any common vanilla metatile of the pair
+    (no material is given), and the solver picks what fits the frozen neighbours by vanilla adjacency.
+    Water | box | grass becomes a shoreline. Doors and warps are never candidates; Pk* drafts are never
+    reference data."""
+    from .layers import parse_rect
+    from .lint import physical_class
+    grid, pair = load(repo, query)
+    x0, y0, w, h = parse_rect(box_text, grid.w, grid.h)
+    rules = Rules(repo, pair, include_pk=False)
+    if not rules.layouts:
+        raise PkError('NOTFOUND', f'no vanilla layout uses the tileset pair of {grid.name}')
+    options = sorted(m for m, n in rules.freq.items()
+                     if n >= AUTO_MIN_FREQ and physical_class(pair.behavior_name(m), 0) != 'door')
+    box = [(x, y) for y in range(y0, y0 + h) for x in range(x0, x0 + w)]
+    targets = {p: rules.material(grid.at(*p)) for p in box}
+    frozen = {(x, y) for y in range(grid.h) for x in range(grid.w)} - set(box)
+    ring = [p for p in ring_cells(grid, (x0, y0, w, h), 1) if p not in targets]
+    before = len(unseen(grid, rules, box + ring))
+    # Seen vs unseen matters, not how common a pair is: log(count) made the solver flood the box with
+    # open water (water|water is the most common pair) and leave hard edges against the grass.
+    class Seen(Rules):
+        def pair_score(self, table, a, b):
+            n = table.get((a, b), 0)
+            return 0.15 * math.log(n + 1) if n else -8.0
+    seen = Seen.__new__(Seen)
+    seen.__dict__.update(rules.__dict__)
+    result = solve(grid, seen, targets, margin=0, frozen=frozen, choices={p: options for p in box},
+                   diag_weight=diag_weight, passes=12)
+    changed = []
+    for p in box:
+        old = grid.at(*p)
+        if result[p] != old[0]:
+            grid.set(*p, default_bits(repo, pair, result[p], old))
+            changed.append(p)
+    save(tx, grid)
+    bad = unseen(grid, rules, box + ring)
+    rows = changed_view(grid, pair, changed or box, 'class')
+    if bad:
+        rows.insert(0, f'WARN {len(bad)} seams never seen in vanilla remain, e.g. ' +
+                    ' '.join(f'{x},{y}{d}' for x, y, d in bad[:5]))
+    return Result(f'terrain auto {grid.name} {x0},{y0},{w}x{h} candidates:{len(options)} '
+                  f'changed:{len(changed)} seams:{before}->{len(bad)}', rows)
+
+
 def command(repo, tx, args, opts, pagination):
     verb, rest = args[0], args[1:]
+    if verb == 'auto' and len(rest) == 2:
+        return auto(repo, tx, rest[0], rest[1], float(opts.get('diag', 0.5)))
     if verb == 'learn' and len(rest) == 1:
         grid, pair = load(repo, rest[0])
         rules = Rules(repo, pair)
