@@ -10,7 +10,7 @@ METATILE = 0x2A3 | 675 | name given with pk meta name.
 pk find "query" [--kind map|text|script|flag|var|trainer|gfx|behavior|layout|tileset|music]
 pk refs EXACT_LABEL_OR_CONSTANT
 pk map ls [filter] | pk map info MAP
-pk map show MAP [--rect x,y,WxH] [--exact] [--layer coll|elev|all] [--stamps] (help map: symbols)
+pk map show MAP [--rect x,y,WxH] [--exact] [--layer coll|elev|all] [--stamps] [--roles] (help map: symbols)
 pk map lint MAP (ugliness score: seams stairs rare rects empty; 0 is clean)
 pk map lint --snapshot (freeze vanilla adjacency + re-measure strata; only writer of the snapshot)
 pk map render MAP [--rect] [--scale 1] [--out file.png] (real graphics, for vision)
@@ -28,7 +28,7 @@ pk kit index | find [--feature F --top C --bottom C --left C --right C --size Wx
 pk bp check|plan|render|apply MAP | pk bp world | pk bp export MAP (help bp: blueprint format)
 pk tileset build art/X/tileset.pkt | pk tileset export MAP name | pk px show|check|render FILE.px
 pk sprite show|export GFX | pk sprite build FILE.px name --like GFX (NPC overworld sprites)
-pk meta ls MAP | pk meta show MAP METATILE | pk meta name MAP METATILE snake_name [--sym X --tags t]
+pk meta ls|show|name|autoname|carts MAP [--sym X --tags t --role R --class C --sheet] (help meta)
 pk ev ls MAP | pk ev add MAP obj @x,y gfx=LASS move=WANDER text="..." | ev set | ev rm
 pk text get LABEL | pk text set LABEL "plain text" | text add | ls | grep | replace | check
 Plain text is wrapped to 208px, 2 lines per box: || = new box, | = new line. {PLAYER} etc. allowed.

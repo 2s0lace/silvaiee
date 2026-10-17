@@ -950,3 +950,28 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - Deleted the 12 polish copies (owner-approved; polish was judged not to improve maps, renders are kept).
   After: no duplicate labels from Pk* maps (the one remaining duplicate, `MtChimney_EventScript_BagIsFull`, is
   vanilla Emerald); `pk check all` → maps:964 errors:0.
+
+## Parallel task D: computed tile cards (2026-10-17, DeepSeek)
+- New `pk/maps/cards.py` + `tests/test_cards.py`; wiring in `pk.py` only (meta branch + `map show --roles`).
+  `pk meta card MAP MT` (<=8 lines), `pk meta cards MAP [--role open|edge|corner|mixed|object]
+  [--class C] [--limit N] [--sheet]`, `pk map show MAP --roles [--rect]`. Cache `.pk/cards/<pair>.json`
+  (v2, raw aggregates, git-ignored), so a role-rule change needs no rebuild. Read-only: never renames or
+  writes metatiles, never edits maps. Helper/cache writes bypass the transaction overlay, like `wfc`.
+- A card is per (pair, metatile) from every vanilla *outdoor* layout of the pair (never `Pk*`), plus
+  "portable" primary ids (id < `pair.limits['metatiles']`) from pairs sharing the primary. Own
+  class/coll/elev: `lint.metatile_physical` (unused-tile fallback, so `0x045` unused in PalletTown is
+  `walk`). Neighbour classes: `lint.physical_class` of each neighbour cell.
+- Fixed role rules (`classify_role`, documented in the docstring): `open` own>=0.60 on all 8 dirs; `edge`
+  one cardinal other>=0.70 (others own>=0.60); `outer corner` two adjacent cardinals >=0.70 same class;
+  `inner corner` no cardinal and exactly one diagonal >=0.90; else `mixed`. Roles need >=5 uses
+  (`ROLE_MIN`). `needs` = one metatile >=90% on a cardinal (>=5 uses) => `part of an object`. Name prefix
+  (`water_ grass_ sand_ solid_ ledge_`) checked against class and role (`grass_`/`sand_` also need a
+  resolved role).
+- Validation (commands in `tasks/parallel_D_report.md`). PASS: leave-one-out prediction over 10 vanilla
+  maps — open 94.8%, edge 89.0%, corner 93.0% (target 85%). Known tiles pass (0x12B open surf; 0x045 walk
+  + NAME CONTRADICTS; 0x0D4 CONTRADICTS). **MISS:** objects vs stamps 42.2% of 789 stamp tiles (43.5% of
+  the 766 on vanilla metatiles; tree 3/4) against a 90% target — reported, NOT loosened (0.50 would give
+  91.5%). Coverage non-mixed 25.1%. Name check 2606/10300 pair rows, 272/2635 distinct (tileset,id) vs
+  name_audit 482/2819 (per-pair rows and the unused-tile fallback inflate the first).
+- Sheet `.pk/render/cards_<pair>.png` (30 tiles, 10 per family, scale 3, role under each) for the owner.
+  AGENT.md stays 39 lines; `pk help` equals it.
