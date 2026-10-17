@@ -919,3 +919,21 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - `pk terrain auto MAP x,y,WxH --options N` computes up to N distinct fills (varying diagonal weight `0.2 / 0.5 / 1.0` and, when identical, applying a deterministic per-option tie-break), deduplicating identical fills and reporting `INFO only K distinct options` when fewer than N exist.
 - Writes no map changes (`tx.writes` stays empty); renders each option (box + 2-tile margin, scale 3) to `.pk/render/auto_<MAP>_<n>.png` and prints `option n: seams S, changed C, png PATH` plus `pk terrain auto MAP x,y,WxH --pick n`. `--pick n` applies option `n` deterministically.
 - `aiceus/server.py` adds `GET /api/auto/NAME?box=x,y,WxH` (`pk terrain auto ... --options 3 --json`, read-only) and `aiceus/index.html` wires the Auto-fill button to display the option PNGs and insert `pk terrain auto MAP box --pick n` into the ticket note (`tests/test_aiceus.py`, 12 tests pass; `tests/test_terrain_auto.py`, 9 tests pass).
+
+## Round 4 step 5: corners - no diagonal weight changed (measured, default kept at 0.5)
+- 10 in-memory boxes (5 where grass meets sand, 5 where a pond ends), wiped with a plain ground tile and re-filled by `terrain.auto`, seams after (`C:/Python314/python.exe -B tools/pk/tests/round4_measure.py corners`). `round4_measure.py` is a throwaway measurement script, not a test.
+
+  | box (4x4) | w0 | w0.5 | w1 | w2 |
+  |---|---|---|---|---|
+  | FiveIsland_Meadow 3,8 | 1 | 0 | 0 | 0 |
+  | FiveIsland_MemorialPillar 10,7 | 2 | 1 | 1 | 1 |
+  | OneIsland_TreasureBeach 7,22 | 0 | 1 | 1 | 0 |
+  | OneIsland_TreasureBeach 10,21 | 0 | 0 | 0 | 0 |
+  | FiveIsland_MemorialPillar 11,7 | 1 | 2 | 3 | 3 |
+  | PalletTown 5,15 | 4 | 0 | 0 | 0 |
+  | PalletTown 9,15 | 0 | 0 | 0 | 0 |
+  | CinnabarIsland 6,10 | 0 | 0 | 0 | 0 |
+  | FourIsland 13,7 | 2 | 0 | 0 | 0 |
+  | FuchsiaCity 33,24 | 3 | 3 | 3 | 3 |
+
+- Target (a weight better on >=8/10 and never worse) is not met: 0 is strictly best on 1/10, 0.5 on 0/10, 1.0 on 0/10, 2.0 on 0/10; 0.5/1.0 are worse than best on 2/10, 2.0 on 1/10. So the `terrain auto` default stays **0.5** and nothing changes.
