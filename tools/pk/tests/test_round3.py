@@ -226,6 +226,31 @@ class BlueprintKitbashTest(unittest.TestCase):
         self.assertTrue(all(keep <= frozen for _, frozen in seen), seen)
 
 
+    def test_kitbash_cells_leave_intended_for_structure_checks(self):
+        # `intended` is snapshotted from the material brushes before kitbash runs; kitbash must remove
+        # the cells it touched so structure_problems reads their current class, not the stale brush.
+        self.tx.stage('tools/pk/tests/round3_kitbash_intended.bp',
+                      b'blueprint PkR3Blueprint_Frlg v1\nterrain\n  fill ground\n'
+                      b'  copy PalletTown_Frlg 0,0,2x2 @0,0\nstructures\n  thing planter @0,0\n')
+        captured = {}
+        real = bp_apply.structure_problems
+
+        def capture(*args, **kwargs):
+            captured.setdefault('intended', dict(args[8]))
+            return real(*args, **kwargs)
+
+        with mock.patch.object(bp_apply, 'Repo', return_value=self.baseline), \
+             mock.patch.object(bp_apply, 'structure_problems', side_effect=capture):
+            try:
+                bp_apply.run(self.repo, self.tx, 'tools/pk/tests/round3_kitbash_intended.bp', 'apply', {})
+            except PkError:
+                pass
+        self.assertIn('intended', captured, 'structure_problems was never called')
+        box = {(0, 0), (1, 0), (0, 1), (1, 1)}
+        self.assertEqual(box & set(captured['intended']), set(),
+                         'the kitbash box is still shadowing the grid in intended')
+
+
 class ShapeTest(unittest.TestCase):
     def test_owner_audit_rules(self):
         from round3_measure import audit_rules

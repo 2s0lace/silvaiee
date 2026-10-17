@@ -176,9 +176,12 @@ def describe(cells, w, h, has_event=False):
     return fields, None
 
 
-def window_digest(pair_key, w, h, ids):
-    """Identity of a window's metatile content (dedupe key)."""
-    return hashlib.sha1(f'{pair_key}|{w}x{h}|'.encode() + array.array('H', ids).tobytes()).hexdigest()
+def window_digest(pair_key, w, h, ids, portable=False):
+    """Identity of a window's metatile content (dedupe key). A portable window uses only metatiles of
+    the shared *primary* tileset, so its secondary tileset is irrelevant: hash the primary alone, else
+    the same window gathered from different secondaries is kept once per secondary (byte-identical)."""
+    key = pair_key.split('+')[0] if portable else pair_key
+    return hashlib.sha1(f'{key}|{w}x{h}|'.encode() + array.array('H', ids).tobytes()).hexdigest()
 
 
 def scan_map(name, pair_key, map_w, map_h, classes, ids, event_cells, seen, stats, out, sizes=WINDOW_SIZES,
@@ -197,13 +200,14 @@ def scan_map(name, pair_key, map_w, map_h, classes, ids, event_cells, seen, stat
                     stats['skipped'][reason] += 1
                     continue
                 window_ids = [ids[(y + j) * map_w + x + i] for j in range(h) for i in range(w)]
-                digest = window_digest(pair_key, w, h, window_ids)
+                portable = all(mt < primary_limit for mt in window_ids)
+                digest = window_digest(pair_key, w, h, window_ids, portable)
                 if digest in seen:
                     stats['skipped']['duplicate'] += 1
                     continue
                 seen.add(digest)
                 out.append(dict(map=name, x=x, y=y, w=w, h=h, pair=pair_key,
-                                portable=all(mt < primary_limit for mt in window_ids), **fields))
+                                portable=portable, **fields))
                 stats['kept'] += 1
 
 

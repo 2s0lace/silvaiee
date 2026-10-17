@@ -370,6 +370,7 @@ def run(repo, tx, path, mode, opts):
     # Kitbash operations follow every material brush, in their original file order.
     from ..maps import edit as map_edit, terrain as map_terrain
     protect = stamped | keep | footprint      # repair must never reach into the keep area or a footprint
+    kitbash_cells = set()
     for n, words in bp['kitbash']:
         try:
             if words[0] == 'copy':
@@ -382,6 +383,7 @@ def run(repo, tx, path, mode, opts):
                     if clash:
                         raise PkError('CONFLICT', f'copy box @{at[0]},{at[1]} covers the keep area at '
                                       f'{clash[0][0]},{clash[0][1]}')
+                    kitbash_cells |= box
                 r = map_edit.command(repo, tx, ['copy', name, words[2], words[3][1:]],
                                      {'from': words[1], 'repair': True, 'frozen': protect})
             else:
@@ -389,12 +391,17 @@ def run(repo, tx, path, mode, opts):
                 clash = sorted(box & keep)
                 if clash:
                     raise PkError('CONFLICT', f'auto box covers the keep area at {clash[0][0]},{clash[0][1]}')
+                kitbash_cells |= box
                 r = map_terrain.auto(repo, tx, name, words[1], frozen=protect)
         except PkError as exc:
             raise PkError(exc.code, f'{path}:{n}: {exc}') from None
         ops.append(r.summary)
         warns += [x[5:] for x in r.data if x.startswith('WARN ')]
         ops += [x for x in r.data if x.startswith('INFO ')]
+    # The kitbash runs after `intended` was snapshotted from the material brushes; drop the cells it
+    # touched so structure_problems reads their current class (a building on kitbashed water warns).
+    for c in kitbash_cells:
+        intended.pop(c, None)
     # 4. structures --------------------------------------------------------------------------
     occupied = {}
     for e in entities(bp, 'structures'):

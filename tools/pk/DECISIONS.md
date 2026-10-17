@@ -1046,3 +1046,20 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   smaller than `include_pk=True` for Pallet Town's pair (7 vs 32 layouts). On the previous default it
   fails with `AssertionError: 32 != 7`.
 - `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_terrain_auto -v`: 15 tests still pass.
+
+## Review fix 9: kit portable dedupe and blueprint `intended` (2026-10-17, DeepSeek)
+- **Fixed (kit):** `window_digest` hashed the full `primary+secondary` pair even for a *portable* window
+  (all metatiles below `pair.limits['metatiles']`), so the same window gathered from two pairs sharing
+  the primary was kept once per secondary (19/97 byte-identical `kit fit` rows on Pallet Town 0,0,2x2).
+  It now hashes only the primary for portable windows; `scan_map` computes `portable` before the digest.
+- **Fixed (blueprint):** `intended` (the blueprint's wanted material per cell) was snapshotted before
+  `bp['kitbash']` ran, so a `copy`/`auto` that pasted water over a `fill ground` cell still made
+  `structure_problems` see `ground` there (no water warning, or a false one). The cells each kitbash step
+  touched are now removed from `intended`, so the check reads their current class.
+- Tests: `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_kit -v` (30 pass; new
+  `test_portable_windows_dedupe_across_secondaries` fails before as `2 != 1`);
+  `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_round3 -v` (16 tests; new
+  `test_kitbash_cells_leave_intended_for_structure_checks` fails before with the box still in `intended`).
+- **Skipped:** *stamp holes in repair* needs a new `placed`-relative rim definition (more than ~20 lines
+  and data-dependent to test), so it is left for a dedicated task. *REPEAT parsing/count in aiceus* is
+  fixed with findings 6-7 (aiceus edits wait for the parallel builds).

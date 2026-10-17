@@ -104,6 +104,19 @@ class KitIndexTest(unittest.TestCase):
         self.assertEqual((out[0]['map'], out[0]['x'], out[0]['y'], out[0]['pair']), ('Synthetic', 2, 2, 'A+B'))
         self.assertEqual(out[0]['edges']['top'], 'walk')
 
+    def test_portable_windows_dedupe_across_secondaries(self):
+        # A portable window uses only primary metatiles, so the same content from two pairs sharing the
+        # primary is one piece, not one per secondary tileset (window_digest hashes the primary then).
+        classes = ['walk', 'surf', 'walk', 'surf', 'walk', 'surf', 'walk', 'surf', 'walk']
+        ids = [0x100] * 9                                   # below primary_limit: portable
+        stats = dict(scanned=0, kept=0, skipped=dict.fromkeys(kit.SKIP_REASONS, 0))
+        out, seen = [], set()
+        for pair_key in ('A+B', 'A+C'):
+            kit.scan_map(pair_key, pair_key, 3, 3, classes, ids, [], seen, stats, out, sizes=((3, 3),))
+        self.assertEqual(len(out), 1, out)
+        self.assertEqual(out[0]['pair'], 'A+B')
+        self.assertTrue(out[0]['portable'])
+
     def test_command_rejects_unknown_verbs_and_extra_arguments(self):
         repo = Repo(ROOT)   # not read: both calls fail before touching the repo
         with self.assertRaises(PkError) as ctx:
