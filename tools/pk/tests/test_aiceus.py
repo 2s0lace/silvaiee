@@ -183,6 +183,22 @@ class Aiceus(unittest.TestCase):
         self.assertNotIn(line, doc['tickets'])
         self.assertEqual(len(doc['tickets']), len(tickets) - 1)
 
+    def test_auto_options_endpoint(self):
+        before = (ROOT / 'data/layouts/PkPalletSolV2_Frlg/map.bin').read_bytes()
+        status, doc = self.json_call('/api/auto/PkPalletSolV2_Frlg?box=6,19,6x3')
+        self.assertEqual(status, 200)
+        self.assertTrue(doc['ok'])
+        self.assertEqual(len(doc['options']), 3, doc)
+        for idx, opt in enumerate(doc['options'], 1):
+            self.assertEqual(opt['option'], idx)
+            self.assertEqual(opt['png'], f'.pk/render/auto_PkPalletSolV2_Frlg_{idx}.png')
+            self.assertTrue((ROOT / opt['png']).is_file())
+            self.assertEqual(opt['cmd'], f'pk terrain auto PkPalletSolV2_Frlg 6,19,6x3 --pick {idx}')
+            self.assertTrue(opt['src'].startswith('data:image/png;base64,'))
+        self.assertEqual((ROOT / 'data/layouts/PkPalletSolV2_Frlg/map.bin').read_bytes(), before)
+        self.assertEqual(self.json_call('/api/auto/PkPalletSolV2_Frlg?box=6,19,60x3')[0], 400)
+        self.assertEqual(self.json_call('/api/auto/NoSuchMap_Frlg?box=0,0,2x2')[0], 404)
+
 
 if __name__ == '__main__':
     unittest.main()

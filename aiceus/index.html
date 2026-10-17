@@ -246,11 +246,12 @@ function closeTicket() {
   $('pieces').innerHTML = ''; $('pinfo').textContent = ''; hideGhost();
 }
 
-// --- vanilla pieces for the box (pk kit fit); picking one only writes it into the ticket note ---
-let found = [];
+// --- vanilla pieces (pk kit fit) or auto-fill options (pk terrain auto --options 3) ---
+let found = [], autoOpts = [];
 const boxText = b => `${b.x},${b.y},${b.w}x${b.h}`;
 $('find').onclick = async () => {
   if (!pending) return;
+  found = []; autoOpts = [];
   $('pieces').innerHTML = ''; $('pinfo').textContent = 'searching...'; hideGhost();
   try {
     const r = await api(`/api/fit/${encodeURIComponent(cur.name)}?box=${boxText(pending)}&limit=8`);
@@ -263,16 +264,32 @@ $('find').onclick = async () => {
       <div>${p.w}x${p.h} ${esc(p.features.join(' ') || 'plain')}${p.curvy ? ' curvy:' + p.curvy : ''}</div></div>`).join('');
   } catch (e) { $('pinfo').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 };
-$('auto').onclick = () => {
+$('auto').onclick = async () => {
   if (!pending) return;
-  document.querySelectorAll('.piece').forEach(n => n.classList.remove('on')); hideGhost();
-  $('note').value = `auto-fill from surroundings: pk terrain auto ${cur.name} ${boxText(pending)}`;
-  $('note').focus();
+  found = []; autoOpts = [];
+  $('pieces').innerHTML = ''; $('pinfo').textContent = 'computing options...'; hideGhost();
+  try {
+    const r = await api(`/api/auto/${encodeURIComponent(cur.name)}?box=${boxText(pending)}`);
+    autoOpts = r.options;
+    $('pinfo').innerHTML = esc(r.summary) + r.info.map(l => `<br>${esc(l)}`).join('') +
+      (autoOpts.length ? '<br>Click one to put its command into the ticket note.' : '');
+    $('pieces').innerHTML = autoOpts.map((o, i) => `<div class="piece" data-auto="${i}" title="${esc(o.cmd)}">
+      <img src="${o.src || ('/' + o.png)}" alt="">
+      <div>option ${o.option}</div>
+      <div>seams:${o.seams} changed:${o.changed}</div></div>`).join('');
+  } catch (e) { $('pinfo').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 };
 $('pieces').onclick = e => {
   const d = e.target.closest('.piece'); if (!d) return;
-  const p = found[+d.dataset.i];
   document.querySelectorAll('.piece').forEach(n => n.classList.toggle('on', n === d));
+  if (d.dataset.auto !== undefined) {
+    const o = autoOpts[+d.dataset.auto];
+    hideGhost();
+    $('note').value = o.cmd;
+    $('note').focus();
+    return;
+  }
+  const p = found[+d.dataset.i];
   $('note').value = `replace with vanilla piece ${p.map} ${boxText(p)}: ${p.cmd}`;
   showGhost(p);
 };
@@ -324,7 +341,7 @@ $('zoom').onchange = () => {
   zoom = +$('zoom').value;
   if (cur) {
     layout();
-    if (pending) { showDrag(pending); const on = document.querySelector('.piece.on'); if (on) showGhost(found[+on.dataset.i]); }
+    if (pending) { showDrag(pending); const on = document.querySelector('.piece.on'); if (on && on.dataset.i !== undefined) showGhost(found[+on.dataset.i]); }
   }
   s.scrollTo(cx * k - s.clientWidth / 2, cy * k - s.clientHeight / 2);   // keep the same spot centred
 };

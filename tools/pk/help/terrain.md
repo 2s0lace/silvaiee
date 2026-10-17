@@ -12,8 +12,10 @@ pk terrain bake MAP [--rect] (re-pick metatiles in place from current materials;
 WARN "seams never seen in vanilla" lists x,y + h/v pairs to inspect with pk map show --exact / render.
 Finer materials (path vs grass, tree vs cliff): pk meta name MAP METATILE name --tags path (first tag = material).
 Measured on vanilla: 81% of erased natural terrain is re-derived exactly, 1.7% unseen seams.
-pk terrain auto MAP x,y,WxH [--diag 0.5] (no material: the box is filled from its surroundings).
+pk terrain auto MAP x,y,WxH [--diag 0.5] [--options N] [--pick n] (no material: the box is filled from its surroundings).
  Every cell may become any metatile vanilla used >= 3 times in the pair (never doors/warps; Pk* drafts are
  not reference data). The solver keeps pairs that occur in vanilla and avoids unseen ones, so
- water | box | grass becomes a shore where vanilla has one. Prints seams before->after around the box;
+ water | box | grass becomes a shoreline where vanilla has one. Prints seams before->after around the box;
  seams that remain have no vanilla tile for that edge (e.g. tall grass touching water).
+ --options N computes up to N distinct fills without modifying the map, renders each (box + 2-tile margin,
+ scale 3) to .pk/render/auto_<MAP>_<n>.png, and prints the --pick n command; --pick n applies option n.

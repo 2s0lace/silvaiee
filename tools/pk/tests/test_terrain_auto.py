@@ -36,6 +36,40 @@ class TerrainAuto(MapTest):
             for x in range(5, 9):
                 self.assertNotIn('DOOR', pair.behavior_name(grid.at(x, y)[0]))
 
+    def test_options_writes_nothing_and_pick_is_deterministic_and_deduplicates(self):
+        from pk.core.repo import Repo
+        from pk.core.journal import Transaction
+        # 1. --options 3 on a wiped shore corner computes 3 distinct fills and stages no map writes.
+        self.map('paint', 'PalletTown_Frlg', '5,16,4x3', '0x010')
+        painted_writes = dict(self.tx.writes)
+        preview = terrain.auto(self.repo, self.tx, 'PalletTown_Frlg', '5,16,4x3', options_count=3)
+        self.assertEqual(self.tx.writes, painted_writes)
+        opt_lines = [r for r in preview.data if r.startswith('option ')]
+        cmd_lines = [r for r in preview.data if r.startswith('pk terrain auto ')]
+        self.assertEqual(len(opt_lines), 3, preview.data)
+        self.assertEqual(cmd_lines, [f'pk terrain auto PalletTown_Frlg 5,16,4x3 --pick {i}' for i in (1, 2, 3)])
+        for i in (1, 2, 3):
+            self.assertTrue(self.repo.path(f'.pk/render/auto_PalletTown_Frlg_{i}.png').is_file())
+        # 2. --pick n applies the exact option deterministically and two runs match byte-for-byte.
+        chosen = []
+        for i in (1, 2, 3):
+            tx1 = Transaction(Repo(self.repo.root), 'p1')
+            r1 = Repo(self.repo.root, tx1)
+            tx1.writes.update(painted_writes)
+            terrain.auto(r1, tx1, 'PalletTown_Frlg', '5,16,4x3', pick=i)
+            tx2 = Transaction(Repo(self.repo.root), 'p2')
+            r2 = Repo(self.repo.root, tx2)
+            tx2.writes.update(painted_writes)
+            terrain.auto(r2, tx2, 'PalletTown_Frlg', '5,16,4x3', pick=i)
+            self.assertEqual(tx1.writes, tx2.writes)
+            chosen.append(tx1.writes['data/layouts/PalletTown_Frlg/map.bin'])
+        self.assertEqual(len(set(chosen)), 3)
+        # 3. Identical options are deduplicated and reported with INFO only K distinct options.
+        tx_dedupe = Transaction(Repo(self.repo.root), 'dedupe')
+        r_dedupe = Repo(self.repo.root, tx_dedupe)
+        deduped = terrain.auto(r_dedupe, tx_dedupe, 'PalletTown_Frlg', '5,16,4x3', options_count=3)
+        self.assertIn('INFO only 2 distinct options', deduped.data)
+
 
 class RepairKeepsPiece(MapTest):
     def test_copy_repair_never_changes_the_pasted_piece(self):

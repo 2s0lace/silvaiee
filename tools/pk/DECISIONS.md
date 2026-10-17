@@ -914,3 +914,8 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   - Vanilla outdoor (72 maps): **1114** `INFO REPEAT` rows across **53** maps.
   - `PkPallet*` (11 maps): **5** `INFO REPEAT` rows total (`PkPalletSolV2_Frlg`: 3, `PkPalletDeepSeekV2_Frlg`: 2; all other 9 maps: 0).
 - `aiceus/server.py` (`parse_lint_line`, plus `HIT_RE` updated for `portable:true|false`) and `aiceus/index.html` (`CHECKS`, `--REPEAT`) parse and display `REPEAT` as a 4x4 box (`tests/test_aiceus.py`, 11 tests pass).
+
+## Round 4 step 4: preview alternatives for terrain auto (--options / --pick) and aiceus /api/auto
+- `pk terrain auto MAP x,y,WxH --options N` computes up to N distinct fills (varying diagonal weight `0.2 / 0.5 / 1.0` and, when identical, applying a deterministic per-option tie-break), deduplicating identical fills and reporting `INFO only K distinct options` when fewer than N exist.
+- Writes no map changes (`tx.writes` stays empty); renders each option (box + 2-tile margin, scale 3) to `.pk/render/auto_<MAP>_<n>.png` and prints `option n: seams S, changed C, png PATH` plus `pk terrain auto MAP x,y,WxH --pick n`. `--pick n` applies option `n` deterministically.
+- `aiceus/server.py` adds `GET /api/auto/NAME?box=x,y,WxH` (`pk terrain auto ... --options 3 --json`, read-only) and `aiceus/index.html` wires the Auto-fill button to display the option PNGs and insert `pk terrain auto MAP box --pick n` into the ticket note (`tests/test_aiceus.py`, 12 tests pass; `tests/test_terrain_auto.py`, 9 tests pass).

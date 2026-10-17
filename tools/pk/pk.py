@@ -133,7 +133,7 @@ def dispatch(repo, tx, argv):
             raise PkError('PARSE', 'usage: pk meta ls|name|autoname|show')
         result = map_meta.command(repo, tx, args, opts, pagination)
     elif noun == 'terrain':
-        args, opts = options(tail, values=('offset', 'limit', 'rect', 'dir', 'stamp', 'diag'))
+        args, opts = options(tail, values=('offset', 'limit', 'rect', 'dir', 'stamp', 'diag', 'options', 'pick'))
         if not args:
             raise PkError('PARSE', 'usage: pk terrain learn|show|brush|river|ledge|forest|bake')
         result = map_terrain.command(repo, tx, args, opts, pagination)

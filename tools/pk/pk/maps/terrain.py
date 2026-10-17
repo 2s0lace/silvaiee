@@ -381,16 +381,58 @@ def apply(repo, tx, grid, pair, rules, targets, label, frozen=frozenset()):
 
 
 AUTO_MIN_FREQ = 3        # auto-fill candidates: metatiles vanilla used at least this often in the pair
+AUTO_WEIGHTS = (0.2, 0.5, 1.0)
 
 
-def auto(repo, tx, query, box_text, diag_weight=0.5):
+def _seen_rules(rules):
+    # Seen vs unseen matters, not how common a pair is: log(count) made the solver flood the box with
+    # open water (water|water is the most common pair) and leave hard edges against the grass.
+    class Seen(Rules):
+        def pair_score(self, table, a, b):
+            n = table.get((a, b), 0)
+            return 0.15 * math.log(n + 1) if n else -8.0
+    seen = Seen.__new__(Seen)
+    seen.__dict__.update(rules.__dict__)
+    return seen
+
+
+def auto_fills(grid, rules, box, options, count):
+    """Compute up to `count` distinct deterministic fills for `box`."""
+    seen = _seen_rules(rules)
+    targets = {p: rules.material(grid.at(*p)) for p in box}
+    frozen = {(x, y) for y in range(grid.h) for x in range(grid.w)} - set(box)
+    choices = {p: options for p in box}
+    fills, seen_sigs = [], set()
+    for idx in range(count):
+        dw = AUTO_WEIGHTS[idx] if idx < len(AUTO_WEIGHTS) else 0.2 + 0.3 * idx
+        res = solve(grid, seen, targets, margin=0, frozen=frozen, choices=choices, diag_weight=dw, passes=12)
+        sig = tuple(res[p] for p in box)
+        if sig in seen_sigs:
+            for att in range(1, 7):
+                u = lambda m, pt, i=idx, a=att, fs=list(fills): (
+                    0.45 * a * (((m * 31 + pt[0] * 17 + pt[1] * 13 + i * 7 + a * 11) % 23) / 22.0 - 0.5)
+                    - sum(0.45 * (k + 1) for k, f in enumerate(fs) if f[pt] == m))
+                res = solve(grid, seen, targets, margin=0, local_weight=0.05, frozen=frozen, choices=choices,
+                            diag_weight=dw, passes=12, unary=u)
+                sig = tuple(res[p] for p in box)
+                if sig not in seen_sigs:
+                    break
+        if sig not in seen_sigs:
+            seen_sigs.add(sig)
+            fills.append(res)
+    return fills
+
+
+def auto(repo, tx, query, box_text, diag_weight=0.5, options_count=None, pick=None):
     """Fill a box from its surroundings: every cell may become any common vanilla metatile of the pair
     (no material is given), and the solver picks what fits the frozen neighbours by vanilla adjacency.
     Water | box | grass becomes a shoreline. Doors and warps are never candidates; Pk* drafts are never
     reference data."""
     from .layers import parse_rect
     from .lint import physical_class
-    from . import reach
+    from . import meta, reach
+    if options_count is not None and pick is not None:
+        raise PkError('PARSE', 'use either --options or --pick, not both')
     grid, pair = load(repo, query)
     x0, y0, w, h = parse_rect(box_text, grid.w, grid.h)
     rules = Rules(repo, pair, include_pk=False)
@@ -400,20 +442,47 @@ def auto(repo, tx, query, box_text, diag_weight=0.5):
     options = sorted(m for m, n in rules.freq.items()
                      if n >= AUTO_MIN_FREQ and physical_class(pair.behavior_name(m), 0) != 'door')
     box = [(x, y) for y in range(y0, y0 + h) for x in range(x0, x0 + w)]
-    targets = {p: rules.material(grid.at(*p)) for p in box}
-    frozen = {(x, y) for y in range(grid.h) for x in range(grid.w)} - set(box)
-    ring = [p for p in ring_cells(grid, (x0, y0, w, h), 1) if p not in targets]
+    ring = [p for p in ring_cells(grid, (x0, y0, w, h), 1) if p not in set(box)]
     before = len(unseen(grid, rules, box + ring))
-    # Seen vs unseen matters, not how common a pair is: log(count) made the solver flood the box with
-    # open water (water|water is the most common pair) and leave hard edges against the grass.
-    class Seen(Rules):
-        def pair_score(self, table, a, b):
-            n = table.get((a, b), 0)
-            return 0.15 * math.log(n + 1) if n else -8.0
-    seen = Seen.__new__(Seen)
-    seen.__dict__.update(rules.__dict__)
-    result = solve(grid, seen, targets, margin=0, frozen=frozen, choices={p: options for p in box},
-                   diag_weight=diag_weight, passes=12)
+    if options_count is not None:
+        if options_count < 1:
+            raise PkError('BOUNDS', '--options must be >= 1')
+        fills = auto_fills(grid, rules, box, options, options_count)
+        rx0, ry0 = max(0, x0 - 2), max(0, y0 - 2)
+        rx1, ry1 = min(grid.w, x0 + w + 2), min(grid.h, y0 + h + 2)
+        rrect = (rx0, ry0, rx1 - rx0, ry1 - ry0)
+        rows = []
+        for idx, fill in enumerate(fills, 1):
+            grid.cells[:] = before_cells
+            changed_n = 0
+            for p in box:
+                old = grid.at(*p)
+                if fill[p] != old[0]:
+                    grid.set(*p, default_bits(repo, pair, fill[p], old))
+                    changed_n += 1
+            seams_n = len(unseen(grid, rules, box + ring))
+            rel = f'.pk/render/auto_{grid.name}_{idx}.png'
+            out_path = repo.path(rel)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_bytes(meta.render_png(repo, grid, pair, rrect, scale=3))
+            rows.append(f'option {idx}: seams {seams_n}, changed {changed_n}, png {rel}')
+            rows.append(f'pk terrain auto {grid.name} {x0},{y0},{w}x{h} --pick {idx}')
+        grid.cells[:] = before_cells
+        if len(fills) < options_count:
+            rows.append(f'INFO only {len(fills)} distinct options')
+        return Result(f'terrain auto {grid.name} {x0},{y0},{w}x{h} options:{len(fills)}', rows)
+    if pick is not None:
+        if pick < 1:
+            raise PkError('BOUNDS', '--pick must be >= 1')
+        fills = auto_fills(grid, rules, box, options, max(3, pick))
+        if pick > len(fills):
+            raise PkError('BOUNDS', f'--pick {pick}; only {len(fills)} distinct options')
+        result = fills[pick - 1]
+    else:
+        targets = {p: rules.material(grid.at(*p)) for p in box}
+        frozen = {(x, y) for y in range(grid.h) for x in range(grid.w)} - set(box)
+        result = solve(grid, _seen_rules(rules), targets, margin=0, frozen=frozen,
+                       choices={p: options for p in box}, diag_weight=diag_weight, passes=12)
     changed = []
     for p in box:
         old = grid.at(*p)
@@ -434,7 +503,9 @@ def auto(repo, tx, query, box_text, diag_weight=0.5):
 def command(repo, tx, args, opts, pagination):
     verb, rest = args[0], args[1:]
     if verb == 'auto' and len(rest) == 2:
-        return auto(repo, tx, rest[0], rest[1], float(opts.get('diag', 0.5)))
+        opt_n = int(opts['options']) if 'options' in opts else None
+        pick_n = int(opts['pick']) if 'pick' in opts else None
+        return auto(repo, tx, rest[0], rest[1], float(opts.get('diag', 0.5)), opt_n, pick_n)
     if verb == 'learn' and len(rest) == 1:
         grid, pair = load(repo, rest[0])
         rules = Rules(repo, pair)

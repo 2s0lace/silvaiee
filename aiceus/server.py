@@ -13,11 +13,13 @@ Routes (all JSON unless noted; errors are {"ok": false, "error": "CODE message"}
   GET  /api/render/NAME.png?scale=1..4    the PNG rendered by pk (cached until the map changes)
   GET  /api/render/NAME.png?scale=2&rect=x,y,WxH   one box of the map (piece thumbnails)
   GET  /api/fit/NAME?box=x,y,WxH&limit=8  vanilla pieces that fit the box (`pk kit fit`)
+  GET  /api/auto/NAME?box=x,y,WxH         3 preview fills for the box (`pk terrain auto --options 3`)
   GET  /api/tickets                       the lines of .pk/aiceus/tickets.md
   POST /api/ticket                        {"map","x","y","w","h","note"} -> appended line
   POST /api/ticket/delete                 {"index", "line"} -> removes that line (must match exactly)
 """
 import argparse
+import base64
 import json
 import re
 import subprocess
@@ -35,6 +37,7 @@ POS_RE = re.compile(r'@(\d+),(\d+)')
 BOX_RE = re.compile(r'(\d+),(\d+)-(\d+),(\d+)')
 RECT_RE = re.compile(r'^(\d+),(\d+),(\d+)x(\d+)$')
 HIT_RE = re.compile(r'^(\S+) (\d+),(\d+),(\d+)x(\d+) (\S+) (\S+) curvy:(\d+)(?: portable:(?:true|false))?$')
+AUTO_RE = re.compile(r'^option (\d+): seams (\d+), changed (\d+), png (\S+)$')
 PLACEHOLDER = ('<!doctype html><meta charset="utf-8"><title>aiceus</title>'
                '<p>aiceus backend is running. aiceus/index.html is not installed yet.</p>\n')
 
@@ -265,6 +268,34 @@ def api_fit(cfg, name, box, limit):
     return {'ok': True, 'summary': summary, 'pieces': [], 'info': infos, 'relaxed': 'nothing found'}
 
 
+def api_auto(cfg, name, box):
+    """`pk terrain auto NAME x,y,WxH --options 3` (read-only preview fills, no map writes)."""
+    table = catalog(cfg)
+    if name not in table:
+        raise ApiError('NOTFOUND', f'no map {name}')
+    x, y, w, h = parse_rect(box, table[name], name)
+    with _render_lock:
+        doc, rows = run_pk_pages(cfg, ['terrain', 'auto', name, f'{x},{y},{w}x{h}', '--options', '3'])
+    options, infos, unparsed = [], [], []
+    for row in rows:
+        hit = AUTO_RE.match(row)
+        if hit:
+            opt_n, seams, changed, png_rel = hit.groups()
+            png_path = cfg.root / png_rel
+            b64 = base64.b64encode(png_path.read_bytes()).decode('ascii') if png_path.is_file() else ''
+            options.append({'option': int(opt_n), 'seams': int(seams), 'changed': int(changed),
+                            'png': png_rel, 'src': f'data:image/png;base64,{b64}' if b64 else f'/{png_rel}',
+                            'cmd': ''})
+        elif row.startswith('pk terrain auto ') and options and not options[-1]['cmd']:
+            options[-1]['cmd'] = row
+        elif row.startswith('INFO'):
+            infos.append(row)
+        else:
+            unparsed.append(row)
+    infos += [f'INFO aiceus could not parse: {row}' for row in unparsed]
+    return {'ok': True, 'summary': doc.get('summary', ''), 'options': options, 'info': infos}
+
+
 def _ticket_line(name, x, y, w, h, note):
     if w == 1 and h == 1:
         return f'{name} @{x},{y}: {note}'
@@ -358,6 +389,13 @@ class Handler(BaseHTTPRequestHandler):
             elif method == 'GET' and path.startswith('/api/fit/'):
                 self._json(api_fit(cfg, unquote(path[len('/api/fit/'):]), (query.get('box') or [''])[0],
                                    (query.get('limit') or ['8'])[0]))
+            elif method == 'GET' and path.startswith('/api/auto/'):
+                self._json(api_auto(cfg, unquote(path[len('/api/auto/'):]), (query.get('box') or [''])[0]))
+            elif method == 'GET' and path.startswith('/.pk/render/auto_') and path.endswith('.png'):
+                target = (cfg.root / path.lstrip('/')).resolve()
+                if not target.is_file() or (cfg.root / '.pk/render').resolve() not in target.parents:
+                    raise ApiError('NOTFOUND', f'no render {path}')
+                self._send(200, 'image/png', target.read_bytes())
             elif method == 'GET' and path == '/api/tickets':
                 self._json(api_tickets(cfg))
             elif method == 'POST' and path == '/api/ticket/delete':
