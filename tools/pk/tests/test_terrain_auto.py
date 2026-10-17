@@ -3,6 +3,7 @@ import re
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_maps import MapTest  # noqa: E402
@@ -183,6 +184,29 @@ class ReachWriteTest(MapTest):
         self.assertEqual(ok_stamp.data[-1], 'reach: ok')
         no_ent = self.map('paint', 'PkPalletSolV2_Frlg', '3,3', '0x004')
         self.assertEqual(no_ent.data[-1], 'INFO reach: not checked (no entrance)')
+
+
+class SeamCommand(MapTest):
+    def test_seam_reports_ring_seams_and_reach(self):
+        # `pk map seam` used to call repair without outside_only, count unseen seams only on the
+        # cells repair changed (so an unfixable ring reported nothing), and skip the reach check.
+        result = self.map('seam', 'PkSandbox2_Frlg', '4,4,4x4')
+        self.assertEqual(len(result.data), 2, result.data)
+        self.assertEqual(result.data[0], 'WARN 18 seams still unseen after repair')
+        self.assertTrue(result.data[1].startswith('INFO reach:'), result.data)
+
+    def test_seam_repair_is_outside_only(self):
+        from pk.maps import terrain
+        seen = {}
+        real = terrain.repair
+
+        def capture(*args, **kwargs):
+            seen.update(kwargs)
+            return real(*args, **kwargs)
+
+        with mock.patch.object(terrain, 'repair', side_effect=capture):
+            self.map('seam', 'PkSandbox2_Frlg', '4,4,4x4')
+        self.assertTrue(seen.get('outside_only'), 'seam must freeze the box interior (outside_only)')
 
 
 class RepeatLintTest(MapTest):

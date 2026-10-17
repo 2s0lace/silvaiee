@@ -1025,3 +1025,13 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - Seam repair still works: the B2 test `tools.pk.tests.test_maps.SeamRepair.test_repair_fewer_seams_after_copy`
   passes, and the measured seam count for `PkSandbox2_Frlg` drops from **24 to 2** with `--repair` (the
   class lock only blocks class-changing swaps, so seam-lowering swaps of the same class still happen).
+
+## Review fix 5: `pk map seam` three defects (2026-10-17, DeepSeek)
+- `map seam` now passes `outside_only=True`, so the box interior beyond its 1-tile rim is frozen as
+  `help/map.md` already promised; it counts unseen seams over `terrain.ring_cells(grid, box, ring)`
+  instead of only the cells `repair` touched (an unfixable seam around the box used to disappear from the
+  report whenever `changed` was empty); and it appends `reach.check_write(repo, pair, before_cells, grid)`.
+- `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_terrain_auto.SeamCommand -v`: 2 tests pass.
+  `map seam PkSandbox2_Frlg 4,4,4x4` now returns `WARN 18 seams still unseen after repair` plus a reach
+  line (both absent before: `0 != 2 : []`, and `outside_only` was `None`).
+- `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_terrain_auto -v`: 15 tests pass.

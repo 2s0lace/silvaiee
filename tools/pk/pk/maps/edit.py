@@ -217,20 +217,27 @@ def command(repo, tx, args, opts):
         return Result(f'render {grid.name} {rect[2]}x{rect[3]} scale:{scale}'
                       f'{" grid" if grid_lines else ""} -> {out}', notes)
     if verb == 'seam' and len(rest) == 2:
-        from . import terrain
+        from . import terrain, reach
         grid, pair = load(repo, rest[0])
         box = area(rest[1], grid)
         ring = int(opts.get('ring', 2))
         if ring < 1:
             raise PkError('BOUNDS', '--ring must be >= 1')
+        before_cells = list(grid.cells)
         rules = terrain.Rules(repo, pair, include_pk=False)
-        changed = terrain.repair(repo, pair, rules, grid, box, ring)
+        # Outside the ring nothing may move, and the box interior is frozen too (help/map.md): the
+        # piece is protected exactly like `copy --repair`, only its 1-tile inside rim may change class.
+        changed = terrain.repair(repo, pair, rules, grid, box, ring, outside_only=True)
         if changed:
             save(tx, grid)
-        bad = terrain.unseen(grid, rules, changed)
+        # Report every unseen seam left in the ring, not only the ones repair happened to touch: an
+        # unfixable seam around the box used to vanish from the report when `changed` was empty.
+        bad = terrain.unseen(grid, rules, terrain.ring_cells(grid, box, ring))
         note = [f'WARN {len(bad)} seams still unseen after repair'] if bad else []
         return Result(f'seam {grid.name} box {box[0]},{box[1]},{box[2]}x{box[3]} ring:{ring} '
-                      f'{len(changed)} metatiles changed', note + changed_view(grid, pair, changed, 'class'))
+                      f'{len(changed)} metatiles changed',
+                      note + changed_view(grid, pair, changed, 'class')
+                      + [reach.check_write(repo, pair, before_cells, grid)])
     if verb == 'at' and len(rest) == 2:
         grid, pair = load(repo, rest[0])
         x, y = point(rest[1], grid)
