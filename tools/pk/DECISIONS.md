@@ -937,3 +937,16 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   | FuchsiaCity 33,24 | 3 | 3 | 3 | 3 |
 
 - Target (a weight better on >=8/10 and never worse) is not met: 0 is strictly best on 1/10, 0.5 on 0/10, 1.0 on 0/10, 2.0 on 0/10; 0.5/1.0 are worse than best on 2/10, 2.0 on 1/10. So the `terrain auto` default stays **0.5** and nothing changes.
+
+## Build blocker: duplicate script labels from map copies; `pk map delete` (2026-10-17, Claude Opus)
+- The build failed because every `pk map polish --into` copy (12 maps: `PkPallet{Muse,Sonnet,DeepSeek,Sol}Polish{,C,D}_Frlg`)
+  copied `scripts.inc` verbatim, so each still defined the source's `<SRC>_MapScripts::` label (duplicate symbol).
+  `copy_map` (`pk/maps/paintover.py`, shared by polish and paintover `--into`) now renames the source map's own
+  labels (`<SRC>_` prefix, whole-word) in every copied `.inc` and in map.json. Test: `tests/test_map_copy_delete.py`.
+- New `pk map delete NAME`: Pk* drafts only, one journaled transaction (undoable). Removes the map_groups.json
+  entry, the layouts.json entry when no other map uses the layout, the event_scripts.s include and the files.
+  Refuses vanilla maps and maps still referenced by another map (whole-word id match; `MAP_X` must not match
+  `MAP_X_C`, a bug caught on the first dry run). `map new`/copies now treat a folder without map.json as free.
+- Deleted the 12 polish copies (owner-approved; polish was judged not to improve maps, renders are kept).
+  After: no duplicate labels from Pk* maps (the one remaining duplicate, `MtChimney_EventScript_BagIsFull`, is
+  vanilla Emerald); `pk check all` → maps:964 errors:0.

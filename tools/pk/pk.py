@@ -103,6 +103,8 @@ def dispatch(repo, tx, argv):
             result = map_resize.extend_to(repo, tx, args[1], args[2], opts)
         elif args and args[0] == 'new' and len(args) == 2:
             result = map_create.new_map(repo, tx, args[1], opts)
+        elif args and args[0] == 'delete' and len(args) == 2:
+            result = map_create.delete_map(repo, tx, args[1])
         elif args and args[0] == 'ls' and len(args) <= 2:
             offset, limit = pagination(opts)
             if opts.get('all'):

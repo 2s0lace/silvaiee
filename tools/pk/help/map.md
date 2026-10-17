@@ -73,6 +73,9 @@ pk map resize MAP --add top=n,left=n,right=n,bottom=n (negative crops) | --to Wx
 pk map extend-to MAP NEIGHBOUR (grow along the shared edge until the connection covers the neighbour)
 pk map new NAME --size WxH --tilesets PRIMARY,SECONDARY --fill METATILE [--type town|city|route|indoor|cave]
  [--like MAP (copy header)] [--music MUS_X] [--group gMapGroup_X] (default group gMapGroup_PkNew, appended last)
+pk map delete NAME (Pk* drafts only; one journaled transaction, pk undo restores it): unregisters the map
+ (map_groups.json, layouts.json if unshared, event_scripts.s include) and deletes its files. Refuses vanilla
+ maps and maps another map still references. Copies (polish/paintover --into) rename the source's own labels.
 pk map export MAP [--out file] (default .pk/map/MAP.map): the whole map as text.
  pk map import MAP file [--dry-run]: parse it back and write map.bin + border.bin in one transaction.
  Format: "pkmap 1", layout id, tileset pair, size; "grid" then "legend SYM 0xID" lines and "yy| SYM SYM ..."

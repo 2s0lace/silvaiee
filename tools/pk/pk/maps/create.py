@@ -1,6 +1,7 @@
 """pk map new (SPEC §5.4) and stamps (SPEC §5.3)."""
 import json
 import re
+from pathlib import Path
 
 from ..core.errors import PkError
 from ..core.build import add_map_includes
@@ -26,7 +27,7 @@ def snake(name):
 def new_map(repo, tx, name, opts):
     if not re.fullmatch(r'[A-Z][A-Za-z0-9_]*', name):
         raise PkError('PARSE', 'map name is CamelCase like PalletTown_Pond_Frlg')
-    if repo.root.joinpath('data/maps', name).exists():
+    if repo.root.joinpath('data/maps', name, 'map.json').exists():     # an emptied folder after delete is fine
         raise PkError('CONFLICT', f'map {name} exists')
     m = re.fullmatch(r'(\d+)x(\d+)', opts.get('size', ''))
     if not m or 'tilesets' not in opts or 'fill' not in opts:
@@ -87,6 +88,53 @@ def new_map(repo, tx, name, opts):
     stage_map_include(repo, tx, name)
     return Result(f'map new {name} {map_id} {layout_id} {w}x{h} group {group}',
                   ['next: pk ev add ... warp to reach it; pk map show ' + name])
+
+
+def delete_map(repo, tx, query):
+    """Unregister and delete a Pk* draft map in one journaled transaction (pk undo restores it):
+    map_groups.json entry, layouts.json entry (only if no other map uses the layout), the
+    event_scripts.s include, and the files under data/maps/NAME and data/layouts/NAME.
+    Refuses vanilla maps and maps another map still points to (connections, warps)."""
+    name, data, layout = repo.map(query)
+    if not name.startswith('Pk'):
+        raise PkError('CONFLICT', f'{name} is not a Pk* draft; pk only deletes its own drafts')
+    map_id, layout_id = data['id'], data['layout']
+    users = []
+    whole = re.compile(r'(?<![A-Za-z0-9_])' + re.escape(map_id) + r'(?![A-Za-z0-9_])')   # not MAP_X_C for MAP_X
+    for other, other_data in repo.maps().items():
+        if other == name:
+            continue
+        if whole.search(json.dumps(other_data)):
+            users.append(other)
+    if users:
+        raise PkError('CONFLICT', f'{map_id} is still referenced by: ' + ', '.join(sorted(users)))
+    groups = JsonDocument(repo.read('data/maps/map_groups.json'))
+    for group in groups.value['group_order']:
+        if name in groups.value.get(group, []):
+            groups.value[group].remove(name)
+    tx.stage('data/maps/map_groups.json', groups.emit())
+    layout_shared = any(d.get('layout') == layout_id for n, d in repo.maps().items() if n != name)
+    if not layout_shared:
+        layouts = JsonDocument(repo.read('data/layouts/layouts.json'))
+        layouts.value['layouts'] = [x for x in layouts.value['layouts'] if x.get('id') != layout_id]
+        tx.stage('data/layouts/layouts.json', layouts.emit())
+    path = 'data/event_scripts.s'
+    text = repo.read(path).decode('utf-8')
+    line = f'.include "data/maps/{name}/scripts.inc"'
+    kept = [l for l in text.splitlines(True) if l.strip() != line]
+    if len(kept) != len(text.splitlines(True)):
+        tx.stage(path, ''.join(kept).encode('utf-8'))
+    folders = [f'data/maps/{name}'] + ([] if layout_shared else
+                                       [str(Path(layout['blockdata_filepath']).parent.as_posix())])
+    removed = []
+    for folder in folders:
+        for item in sorted(repo.root.joinpath(folder).glob('*')):
+            if item.is_file():
+                rel = f'{folder}/{item.name}'
+                tx.stage(rel, None)
+                removed.append(rel)
+    return Result(f'map delete {name} {map_id} files:{len(removed)}'
+                  + (' layout kept (shared)' if layout_shared else ''), removed)
 
 
 def stage_map_include(repo, tx, name):

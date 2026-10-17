@@ -92,7 +92,7 @@ def copy_map(repo, tx, query, new_name):
     from ..core.repo import JsonDocument
     if not re.fullmatch(r'[A-Z][A-Za-z0-9_]*', new_name):
         raise PkError('PARSE', 'map name is CamelCase like PkPalletDraft2_Frlg')
-    if repo.root.joinpath('data/maps', new_name).exists():
+    if repo.root.joinpath('data/maps', new_name, 'map.json').exists():
         raise PkError('CONFLICT', f'map {new_name} exists')
     name, data, layout = repo.map(query)
     version = repo.version(layout)
@@ -107,12 +107,16 @@ def copy_map(repo, tx, query, new_name):
         raise PkError('CONFLICT', f'{layout_id} exists')
     layouts.value['layouts'].append(new_layout)
     tx.stage('data/layouts/layouts.json', layouts.emit())
-    new_data = dict(data, id=map_id, name=new_name, layout=layout_id, connections=None)
+    # The copy's own labels (NAME_MapScripts, NAME_EventScript_*, NAME_Text_*) must be renamed, or the
+    # build fails on duplicate symbols (it did for every polish --into copy).
+    own = re.compile(r'(?<![A-Za-z0-9_])' + re.escape(name) + r'_')
+    rename = lambda text: own.sub(new_name + '_', text)
+    new_data = json.loads(rename(json.dumps(dict(data, id=map_id, name=new_name, layout=layout_id,
+                                                 connections=None), ensure_ascii=False)))
     tx.stage(f'data/maps/{new_name}/map.json', (json.dumps(new_data, indent=2, ensure_ascii=False) + '\n').encode('utf-8'))
-    try:
-        tx.stage(f'data/maps/{new_name}/scripts.inc', repo.read(f'data/maps/{name}/scripts.inc'))
-    except PkError:
-        pass
+    for item in sorted(repo.root.joinpath('data/maps', name).glob('*.inc')):
+        tx.stage(f'data/maps/{new_name}/{item.name}',
+                 rename(repo.read(f'data/maps/{name}/{item.name}').decode('utf-8')).encode('utf-8'))
     groups = JsonDocument(repo.read('data/maps/map_groups.json'))
     group = next((g for g in groups.value['group_order'] if name in groups.value[g]), 'gMapGroup_PkNew')
     groups.value[group].append(new_name)
