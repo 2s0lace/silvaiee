@@ -55,7 +55,12 @@ def new_map(repo, tx, name, opts):
     mt = pair.lookup(opts['fill'])
     cell = default_bits(repo, pair, mt, (mt, 0, 3))
     tx.stage(layout['blockdata_filepath'], encode([cell] * (w * h)))
-    tx.stage(layout['border_filepath'], encode([cell] * 4))
+    border, note = new_map_border(repo, opts, primary, secondary, pair)
+    if border is None:
+        tx.stage(layout['border_filepath'], encode([cell] * 4))
+    else:
+        layout['border_width'], layout['border_height'] = border[1], border[2]
+        tx.stage(layout['border_filepath'], border[0])
     layouts.value['layouts'].append(layout)
     tx.stage('data/layouts/layouts.json', layouts.emit())
     if opts.get('like'):
@@ -87,7 +92,43 @@ def new_map(repo, tx, name, opts):
     tx.stage('data/maps/map_groups.json', groups.emit())
     stage_map_include(repo, tx, name)
     return Result(f'map new {name} {map_id} {layout_id} {w}x{h} group {group}',
-                  ['next: pk ev add ... warp to reach it; pk map show ' + name])
+                  [note, 'next: pk ev add ... warp to reach it; pk map show ' + name])
+
+
+def new_map_border(repo, opts, primary, secondary, pair):
+    """Border for a new map, so trees at the map edge are not cut against plain grass (every benchmark v3
+    model left the fill tile there). --like MAP copies that map's border; otherwise the most common border of
+    the vanilla layouts on the same tileset pair. Returns ((bytes, w, h) or None, note line)."""
+    layouts = repo.layouts()
+    if opts.get('like'):
+        _, like, _ = repo.map(opts['like'])
+        src = layouts.get(like['layout']) or {}
+        if (src.get('primary_tileset'), src.get('secondary_tileset')) == (primary, secondary):
+            return ((repo.read(src['border_filepath']), int(src.get('border_width', 2)),
+                     int(src.get('border_height', 2))), f"border: copied from {opts['like']}")
+    # Match the map: a sea map (fill is surfable) gets a sea border, a land map a wall border (trees/rocks),
+    # because the most common border of a pair can be the wrong kind (Pallet's pair: Route 21's sea).
+    from .lint import physical_class, metatile_physical
+    from ..maps.grid import decode as _decode
+    fill = pair.lookup(opts['fill']) if opts.get('fill') else None
+    want = 'surf' if fill is not None and physical_class(pair.behavior_name(fill), 0) == 'surf' else 'wall'
+    votes = {}
+    for lid, src in layouts.items():
+        if str(lid).startswith('LAYOUT_PK_') or (src.get('primary_tileset'), src.get('secondary_tileset')) != (primary, secondary):
+            continue
+        try:
+            key = (repo.read(src['border_filepath']), int(src.get('border_width', 2)), int(src.get('border_height', 2)))
+        except (PkError, KeyError, TypeError, ValueError):
+            continue
+        first = _decode(key[0])[0]
+        # border.bin stores collision 0 (GetBorderBlockAt forces it), so use the tile's own vanilla class
+        if metatile_physical(repo, pair, first[0])[0] != want:
+            continue
+        votes[key] = votes.get(key, 0) + 1
+    if votes:
+        best = max(votes, key=lambda k: (votes[k], k[0]))
+        return best, f'border: most common vanilla {want} border of this tileset pair ({votes[best]} layouts); change with pk map border'
+    return None, 'INFO border: no vanilla layout uses this tileset pair; border = fill tile (set it with pk map border)'
 
 
 def delete_map(repo, tx, query):

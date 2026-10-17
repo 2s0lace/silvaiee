@@ -580,6 +580,8 @@ def run(repo, query, show_all=False):
     infos += cut
     infos += shapes(grid, pair, snap)
     infos += repeats(grid, pair)
+    from .layout import rows as layout_rows       # composition vs vanilla (empty lawns, mirror symmetry)
+    infos += layout_rows(repo, grid, pair, stratum)
     header = (f'lint {grid.name} stratum:{stratum} '
               + ' '.join(f'{m}:{"-" if counts[m] is None else counts[m]}' for m in counts))
     delta = ''

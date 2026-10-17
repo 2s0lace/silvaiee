@@ -1099,3 +1099,20 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - **Solvers.** `terrain.repair` skips a candidate that adds broken object sides; `terrain.auto` writes nothing
   when its fill would break objects (`refused: would break N object sides`); `--options` marks such options
   `BREAKS`. Tests: `tests/test_objects.py` (SolversKeepObjects).
+
+## Layout: vanilla border on map new, composition stats (2026-10-17, Claude Opus)
+- **Border.** Every v3 model left `map new`'s border = fill tile, so edge trees looked cut. `map new` now copies
+  `--like`'s border (same pair) or takes the most common vanilla border of the pair *of the right kind*: sea
+  for a surf fill, wall (trees/rocks) for land. The plain "most common" was wrong for Pallet's pair (Route 21's
+  sea). border.bin stores collision 0, so the kind comes from `metatile_physical`.
+- **Composition stats** (`pk/maps/layout.py`, INFO only, never scored): `open` = a map's emptiest 15x10 screen
+  (sliding, stride 5), share of plain cells (walkable ground/grass/sand whose 3x3 is one metatile); `mirror` =
+  class symmetry left-right/top-bottom, ignoring plain-plain and solid/water-frame pairs. Thresholds: vanilla
+  per-map p95 per stratum (route open 26.7%, mirror 71.2%; town open 8.0%, mirror 68.9%). 7/72 vanilla maps
+  show a row.
+- History, so nobody re-tries it: per-screen p95 fired on 22/72 vanilla maps; mirror without the frame
+  exclusion had vanilla p95 88-94% and separated nothing (the frame exclusion was added after looking at the
+  benchmark maps; reason: every vanilla map is framed by trees/water on both sides).
+- Benchmark v3 (not blind): Argon 1-2 no rows (open 5-6%, mirror 47-59%); Sol 6.1 and Gemini flagged (Gemini 5
+  71% lawn, Gemini's park 93% mirrored, Sol's park 84%). Islands are not caught (sea is not lawn); a
+  curviness measure would be next. To be validated against the owner's blind scores.

@@ -16,6 +16,9 @@ pk map lint MAP (read-only; thresholds in tools/pk/data/lint_map.json; 0 is clea
 WARN OBJECT @x,y 0xMMM needs above: 0xAAA 99%, ... (has 0xBBB): a tree, rock, cliff or ledge tile whose side
  vanilla always fills with a few specific tiles (e.g. a tree crown without its upper half). Listed first;
  counted as objects:N in the summary, not in score/severity. 0 on every vanilla outdoor map.
+INFO LAYOUT open x,y-x2,y2 N% plain lawn: the map's emptiest 15x10 screen vs the vanilla per-map p95 of its
+ stratum. INFO LAYOUT mirror N%: the layout mirrors itself (left-right or top-bottom, ignoring plain lawn and
+ tree/water frames) more than 95% of vanilla maps. Info only; 7 of 72 vanilla maps show one.
  map lint is experimental and not yet calibrated on all vanilla maps.
  pk map lint --snapshot: the only writer of tools/pk/data/vanilla_adjacency.json; it freezes the
   vanilla h/v/diagonal pair counts, the 3x3 metatile-window counts and known metatiles per tileset
@@ -76,6 +79,8 @@ pk map resize MAP --add top=n,left=n,right=n,bottom=n (negative crops) | --to Wx
 pk map extend-to MAP NEIGHBOUR (grow along the shared edge until the connection covers the neighbour)
 pk map new NAME --size WxH --tilesets PRIMARY,SECONDARY --fill METATILE [--type town|city|route|indoor|cave]
  [--like MAP (copy header)] [--music MUS_X] [--group gMapGroup_X] (default group gMapGroup_PkNew, appended last)
+map new picks the border: --like MAP copies that map's border (same tileset pair); otherwise the most common
+ vanilla border of the pair that matches the fill (sea for a sea fill, trees/rocks for land). It prints which.
 pk map delete NAME (Pk* drafts only; one journaled transaction, pk undo restores it): unregisters the map
  (map_groups.json, layouts.json if unshared, event_scripts.s include) and deletes its files. Refuses vanilla
  maps and maps another map still references. Copies (polish/paintover --into) rename the source's own labels.
