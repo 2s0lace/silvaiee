@@ -1012,3 +1012,16 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   -k_copy_repair_honours_a_frozen_set`: `Route21_North_Frlg 4,28,6x4` pasted at `4,16` changes keep cell
   `4,15` with an empty frozen set and leaves it alone with `frozen=keep`. Against the previous code all
   three fail (`PkError not raised`, `('repair', set())`, `[(4,15)] != []`).
+
+## Review fix 4: repair keeps the physical class of every target (2026-10-17, DeepSeek)
+- `terrain.repair` locked the physical class only for the pasted piece's 1-tile rim (`outside_only and
+  inside(x, y)`). Outside-ring cells were free to flip class, because `rules.by_mat` is built from the
+  (partly wrong) metatile names: `0x045` is named `water_151` but is walkable, so a `water` cell could
+  turn into land, and back. The `locked` flag is gone: `phys(bits_for(...)) == phys(old)` now guards every
+  target cell (class and elevation), inside and outside the box.
+- `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_terrain_auto -v`: 13 tests pass. New seed
+  `Route21_North_Frlg 11,1,4x2 -> PalletTown_Frlg 6,15` flips `(7,17)`'s class on the previous code
+  (`AssertionError: Lists differ: [(7, 17)] != []`) and no cell outside the piece now changes class.
+- Seam repair still works: the B2 test `tools.pk.tests.test_maps.SeamRepair.test_repair_fewer_seams_after_copy`
+  passes, and the measured seam count for `PkSandbox2_Frlg` drops from **24 to 2** with `--repair` (the
+  class lock only blocks class-changing swaps, so seam-lowering swaps of the same class still happen).

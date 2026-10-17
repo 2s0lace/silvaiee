@@ -104,6 +104,21 @@ class RepairKeepsPiece(MapTest):
                         **{'from': 'Route21_North_Frlg', 'repair': True})
         self.assertFalse(any(r.startswith('WARN repair changed') for r in good.data), good.data)
 
+    def test_repair_keeps_physical_class_inside_and_outside_the_ring(self):
+        # Repair used to lock only the pasted piece's rim; an outside-ring cell was free to flip
+        # physical class (walkable <-> wall, water <-> land) because material names disagree with the
+        # bits. Seed: Route21_North_Frlg 11,1,4x2 -> PalletTown_Frlg 6,15 changed (7,17)'s class.
+        box = {(6 + i, 15 + j) for j in range(2) for i in range(4)}
+        before_grid, _ = load(self.repo, 'PalletTown_Frlg')
+        before = {(x, y): before_grid.at(x, y) for y in range(before_grid.h) for x in range(before_grid.w)}
+        self.map('copy', 'PalletTown_Frlg', '11,1,4x2', '6,15',
+                 **{'from': 'Route21_North_Frlg', 'repair': True})
+        grid, pair = load(self.repo, 'PalletTown_Frlg')
+        from pk.maps.lint import physical_class
+        phys = lambda c: (physical_class(pair.behavior_name(c[0]), c[1]), c[2])
+        flipped = sorted(p for p in before if p not in box and phys(grid.at(*p)) != phys(before[p]))
+        self.assertEqual(flipped, [], 'repair changed the physical class of cells outside the piece')
+
     def test_copy_repair_honours_a_frozen_set(self):
         # A piece pasted just below a protected area: its repair ring reaches rows y=14..15, which
         # repair rewrites unless those cells are passed as `frozen` (blueprints pass keep | stamped |

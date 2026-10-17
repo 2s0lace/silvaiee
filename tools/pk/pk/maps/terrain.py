@@ -262,16 +262,15 @@ def repair(repo, pair, rules, grid, box, ring=2, frozen=frozenset(), passes=16, 
             old = grid.at(x, y)
             material = rules.material(old)
             best, best_cost = old[0], cell_cost(x, y, old[0])
-            locked = outside_only and inside(x, y)
             for metatile in sorted(rules.by_mat.get(material, ())):
                 if metatile == old[0]:
                     continue
                 cost = cell_cost(x, y, metatile)
                 # Strictly better only: a tie used to swap in the lowest id, rewriting cells that had
-                # no seam at all.
-                if cost < best_cost:
-                    if locked and phys(bits_for(repo, pair, rules, metatile, material, old)) != phys(old):
-                        continue
+                # no seam at all. Every target cell also keeps its physical class and elevation: an
+                # outside-ring cell used to turn walkable into wall or water into land, because the
+                # material names disagree with the collision/behaviour bits (e.g. 0x045 `water_151`).
+                if cost < best_cost and phys(bits_for(repo, pair, rules, metatile, material, old)) == phys(old):
                     best, best_cost = metatile, cost
             if best != old[0]:
                 grid.set(x, y, bits_for(repo, pair, rules, best, material, old))
