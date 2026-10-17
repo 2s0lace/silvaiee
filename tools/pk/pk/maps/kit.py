@@ -184,8 +184,34 @@ def window_digest(pair_key, w, h, ids, portable=False):
     return hashlib.sha1(f'{key}|{w}x{h}|'.encode() + array.array('H', ids).tobytes()).hexdigest()
 
 
+def window_cuts(glued, x, y, w, h):
+    """How many object sides the window border slices through: perimeter cells whose outward side is glued
+    (a tree, rock or cliff tile that vanilla always continues on that side)."""
+    n = sum(1 for i in range(w) if (x + i, y) in glued['N']) + sum(1 for i in range(w) if (x + i, y + h - 1) in glued['S'])
+    n += sum(1 for j in range(h) if (x, y + j) in glued['W']) + sum(1 for j in range(h) if (x + w - 1, y + j) in glued['E'])
+    return n
+
+
+def glued_sides(repo, grid, pair, raw):
+    """{side: {(x, y)}}: object cells whose side is constrained by vanilla (pk/maps/objects.py)."""
+    from .objects import Glue, SIDES, constrained
+    from collections import Counter
+    glue = Glue(repo, grid, pair, raw, edges=False)
+    out = {side: set() for side in SIDES}
+    for y in range(grid.h):
+        for x in range(grid.w):
+            cell = grid.at(x, y)
+            rec = raw.get(cell[0])
+            if rec is None or not glue.objectish(cell):
+                continue
+            for side in SIDES:
+                if constrained(Counter(rec['nmt'][side])) is not None:
+                    out[side].add((x, y))
+    return out
+
+
 def scan_map(name, pair_key, map_w, map_h, classes, ids, event_cells, seen, stats, out, sizes=WINDOW_SIZES,
-             primary_limit=0x280):
+             primary_limit=0x280, glued=None):
     """Append the kept windows of one map to `out`. `classes` and `ids` are row-major per cell (physical
     class, metatile id); `seen` holds digests of kept windows (the first one wins); `stats` collects
     scanned / kept / skipped-per-reason counts."""
@@ -206,8 +232,9 @@ def scan_map(name, pair_key, map_w, map_h, classes, ids, event_cells, seen, stat
                     stats['skipped']['duplicate'] += 1
                     continue
                 seen.add(digest)
+                cuts = window_cuts(glued, x, y, w, h) if glued is not None else 0
                 out.append(dict(map=name, x=x, y=y, w=w, h=h, pair=pair_key,
-                                portable=portable, **fields))
+                                portable=portable, cuts=cuts, **fields))
                 stats['kept'] += 1
 
 
@@ -217,6 +244,8 @@ def build_index(repo):
     maps, layouts = repo.maps(), repo.layouts()
     stats = dict(scanned=0, kept=0, maps=0, skipped=dict.fromkeys(SKIP_REASONS, 0))
     notes, entries, seen = [], [], set()
+    from .objects import raw_counts
+    raws = {}
     for name, _stratum in vanilla_outdoor(repo):
         try:
             grid = Grid(repo, name, maps[name], layouts[maps[name]['layout']])
@@ -228,8 +257,10 @@ def build_index(repo):
         pair_key = f"{pair.primary['symbol']}+{pair.secondary['symbol']}"
         ids = [cell[0] for cell in grid.cells]
         stats['maps'] += 1
+        if pair_key not in raws:
+            raws[pair_key] = raw_counts(repo, pair)
         scan_map(name, pair_key, grid.w, grid.h, classes, ids, list(events(grid.data)), seen, stats, entries,
-                 primary_limit=pair.limits['metatiles'])
+                 primary_limit=pair.limits['metatiles'], glued=glued_sides(repo, grid, pair, raws[pair_key]))
     return entries, stats, notes
 
 
@@ -249,7 +280,7 @@ def load_index(repo, notes=None):
     if path.is_file():
         try:
             entries = json.loads(path.read_text(encoding='utf-8'))
-            if all('portable' in entry for entry in entries):
+            if all('portable' in entry and 'cuts' in entry for entry in entries):
                 return entries
             if notes is not None:
                 notes.append('INFO old kit index lacks portability; rebuilding')
@@ -334,7 +365,7 @@ def pair_name(pair):
 def parse_filters(repo, opts):
     """`pk kit find` options -> keyword arguments of find(). Every value is checked here."""
     filters = dict(size=None, top=None, bottom=None, left=None, right=None,
-                   feature=None, pair=None, limit=parse_limit(opts))
+                   feature=None, pair=None, limit=parse_limit(opts), allow_cuts=bool(opts.get('allow-cuts')))
     if 'size' in opts:
         filters['size'] = parse_size(opts['size'])
     for side in SIDES:
@@ -353,7 +384,7 @@ def parse_filters(repo, opts):
 
 
 def find(entries, size=None, top=None, bottom=None, left=None, right=None,
-         feature=None, pair=None, limit=DEFAULT_LIMIT, exact_only=False):
+         feature=None, pair=None, limit=DEFAULT_LIMIT, exact_only=False, allow_cuts=False):
     """Index windows that match, best first. Returns (hits, counts).
 
     hits: at most `limit` (tier, entry) pairs; tier is 'exact' or 'near' when size is given, else 'any'.
@@ -363,8 +394,11 @@ def find(entries, size=None, top=None, bottom=None, left=None, right=None,
     want = dict(top=top, bottom=bottom, left=left, right=right)
     requested = {v for v in want.values() if v is not None}
     shore = feature == 'shore' or {'surf', 'walk'} <= requested
-    matches = []
+    matches, cut = [], 0
     for entry in entries:
+        if not allow_cuts and entry.get('cuts', 0):
+            cut += 1                       # its border slices a tree, rock or cliff: pasting it breaks objects
+            continue
         if pair is not None and entry['pair'] != pair and not (
                 entry.get('portable', False) and entry['pair'].split('+')[0] == pair.split('+')[0]):
             continue
@@ -390,7 +424,7 @@ def find(entries, size=None, top=None, bottom=None, left=None, right=None,
 
     matches.sort(key=rank)
     counts = dict(matched=len(matches), exact=sum(t == 'exact' for t, _ in matches),
-                  near=sum(t == 'near' for t, _ in matches))
+                  near=sum(t == 'near' for t, _ in matches), cut=cut)
     return matches[:limit], counts
 
 
@@ -441,8 +475,44 @@ def fit(repo, query, box, entries, limit=DEFAULT_LIMIT):
     if not (grid.inside(x0, y0) and grid.inside(x0 + w - 1, y0 + h - 1)):
         raise PkError('BOUNDS', f'box {x0},{y0},{w}x{h} outside {grid.name} {grid.w}x{grid.h}')
     edges, notes = ring_edges(grid, pair, box)
-    hits, counts = find(entries, size=(w, h), pair=pair_name(pair), limit=limit, exact_only=True, **edges)
-    return grid.name, edges, notes, hits, counts
+    # A piece may cut a tree/rock/cliff only where the target continues that object across the cut:
+    # take every match (cutting ones too), then keep a cutting piece only if each sliced side lands on a
+    # neighbour vanilla accepts there (pk/maps/objects.py).
+    hits, counts = find(entries, size=(w, h), pair=pair_name(pair), limit=len(entries), exact_only=True,
+                        allow_cuts=True, **edges)
+    from .objects import Glue, count_in, raw_counts
+    target = Glue(repo, grid, pair, raw_counts(repo, pair))
+    around = [(x, y) for y in range(y0 - 1, y0 + h + 1) for x in range(x0 - 1, x0 + w + 1) if grid.inside(x, y)]
+    original = [grid.at(x0 + i, y0 + j) for j in range(h) for i in range(w)]
+    base = count_in(target, around)
+    sources, kept, rejected, unchecked = {}, [], 0, 0
+    for tier, entry in hits:
+        # Paste in memory, count broken object sides in and around the box, then put the map back.
+        if entry['map'] not in sources:
+            try:
+                sources[entry['map']] = load(repo, entry['map'])[0]
+            except PkError:
+                sources[entry['map']] = None
+        src = sources[entry['map']]
+        if src is None:                         # source unreadable (stale index): offered, but say so
+            unchecked += 1
+            kept.append((tier, entry))
+            continue
+        for j in range(h):
+            for i in range(w):
+                grid.set(x0 + i, y0 + j, src.at(entry['x'] + i, entry['y'] + j))
+        broken = count_in(target, around)
+        for j in range(h):
+            for i in range(w):
+                grid.set(x0 + i, y0 + j, original[j * w + i])
+        if broken > base:
+            rejected += 1
+            continue
+        kept.append((tier, entry))
+    if unchecked:
+        notes.append(f'INFO {unchecked} pieces not checked for broken objects (source map unreadable; run pk kit index)')
+    counts = dict(counts, matched=len(kept), cut=rejected)
+    return grid.name, edges, notes, kept[:limit], counts
 
 
 def sheet(repo, hits, scale=2):
@@ -520,6 +590,8 @@ def command_find(repo, args, opts):
     summary = f"find {len(hits)} of {counts['matched']} matches"
     if filters['size']:
         summary += f" (exact {counts['exact']}, near {counts['near']})"
+    if counts.get('cut'):
+        summary += f" skipped {counts['cut']} that cut a tree/rock/cliff (--allow-cuts shows them)"
     lines = notes + [line for hit in hits for line in hit_lines(hit)]
     if not entries:
         lines.append('INFO the index has no windows; check the vanilla maps, then run pk kit index')
@@ -549,4 +621,6 @@ def command_fit(repo, args, opts):
     elif not hits:
         lines.append('INFO no piece matches these edges and size; try pk kit find with fewer edges')
     summary = f"fit {name} {x},{y},{w}x{h} edges {edge_text} matches {counts['matched']}"
+    if counts.get('cut'):
+        summary += f" (skipped {counts['cut']} that cut objects)"
     return with_sheet(repo, opts, hits, Result(summary, lines))

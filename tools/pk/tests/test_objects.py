@@ -38,5 +38,21 @@ class BrokenObjects(MapTest):
         self.assertRegex(summary, r'objects:\d+ score:\d+ severity:')
 
 
+class SolversKeepObjects(MapTest):
+    def test_auto_never_leaves_a_broken_tree(self):
+        # A box over half of Pallet's tree wall: whatever auto does, no tree may end up broken.
+        from pk.maps import terrain
+        for box in ('0,1,1x2', '1,3,1x1', '0,0,3x3'):
+            terrain.auto(self.repo, self.tx, 'PalletTown_Frlg', box)
+            grid, pair = load(self.repo, 'PalletTown_Frlg')
+            self.assertEqual(objects.check(self.repo, grid, pair), [], box)
+
+    def test_options_flag_fills_that_break_objects(self):
+        from pk.maps import terrain
+        self.map('paint', 'PalletTown_Frlg', '0,1', '0x010')          # a headless tree to start from
+        result = terrain.auto(self.repo, self.tx, 'PalletTown_Frlg', '3,1,2x2', options_count=3)
+        self.assertTrue(all(r.startswith(('option', 'pk terrain auto', 'INFO')) for r in result.data), result.data)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -64,12 +64,34 @@ class PortableTest(unittest.TestCase):
 
     def test_fit_sources(self):
         entries = kit.load_index(self.repo)
-        # Fixed small box on Pallet's northwest boundary.
-        name, edges, notes, hits, counts = kit.fit(self.repo, self.target, (0, 0, 2, 2), entries, 200)
+        # Target unchanged (>= 10 source maps). The box moved from 0,0,2x2 (inside Pallet's tree wall) to
+        # 4,15,4x3 when kit fit started rejecting pieces that break trees/rocks (WARN OBJECT): at 0,0 every
+        # candidate breaks a tree, so the old 10 sources were broken pieces. See DECISIONS (broken objects).
+        name, edges, notes, hits, counts = kit.fit(self.repo, self.target, (4, 15, 4, 3), entries, 200)
         sources = {e['map'] for _, e in hits}
-        print(f'FIT {name} 0,0,2x2 sources={len(sources)} matches={counts["matched"]}', flush=True)
+        print(f'FIT {name} 4,15,4x3 sources={len(sources)} matches={counts["matched"]}', flush=True)
         self.assertGreaterEqual(len(sources), 10, 'STOP: fit target missed')
-        self.assertTrue(all((e['w'], e['h']) == (2, 2) for _, e in hits))
+        self.assertTrue(all((e['w'], e['h']) == (4, 3) for _, e in hits))
+
+    def test_fit_never_offers_object_breaking_pieces(self):
+        from pk.maps import objects
+        from pk.maps.edit import command as edit_cmd
+        entries = kit.load_index(self.repo)
+        for box in ((0, 0, 2, 2), (4, 15, 4, 3)):
+            _, _, _, hits, _ = kit.fit(self.repo, self.target, box, entries, 200)
+            grid, pair = edit.load(self.repo, self.target)
+            base = len(objects.check(self.repo, grid, pair))
+            original = [grid.at(box[0] + i, box[1] + j) for j in range(box[3]) for i in range(box[2])]
+            for _, e in hits:
+                edit_cmd(self.repo, self.tx, ['copy', self.target, f"{e['x']},{e['y']},{box[2]}x{box[3]}",
+                                              f'{box[0]},{box[1]}'], {'from': e['map']})
+                grid, pair = edit.load(self.repo, self.target)
+                self.assertLessEqual(len(objects.check(self.repo, grid, pair)), base, (box, e))
+                for j in range(box[3]):
+                    for i in range(box[2]):
+                        grid.set(box[0] + i, box[1] + j, original[j * box[2] + i])
+                from pk.maps.edit import save
+                save(self.tx, grid)
 
     def test_secondary_ids_are_refused(self):
         source, pair = edit.load(self.repo, 'CeruleanCity_Frlg')

@@ -19,3 +19,6 @@ pk terrain auto MAP x,y,WxH [--diag 0.5] [--options N] [--pick n] (no material: 
  seams that remain have no vanilla tile for that edge (e.g. tall grass touching water).
  --options N computes up to N distinct fills without modifying the map, renders each (box + 2-tile margin,
  scale 3) to .pk/render/auto_<MAP>_<n>.png, and prints the --pick n command; --pick n applies option n.
+terrain auto and copy/stamp --repair never break a tree, rock or cliff: repair skips a swap that would add
+ a WARN OBJECT, and auto writes nothing ("refused: would break N object sides") when its fill would;
+ --options marks such options with BREAKS.

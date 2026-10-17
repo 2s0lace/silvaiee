@@ -1079,3 +1079,23 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - `pk map lint` lists OBJECT rows first and prints `objects:N`; not part of score/severity (calibration kept).
   `--annotate` draws them magenta, thicker, on top; aiceus shows OBJECT as its own check.
   Tests: `tests/test_objects.py` (vanilla 0; a painted-over upper half is reported at the right cell).
+
+## Broken objects, steps 1-3: map edges, kit, solvers (2026-10-17, Claude Opus)
+- **Map edges.** The engine reads the border exactly as `objects.border_reader` does (src/fieldmap.c
+  `GetBorderBlockAt`, FRLG branch: map coordinate mod border size). The 2138 false edge hits came from (a) edges
+  that have a connection (the next map is drawn there, not the border) and (b) tile/border combinations that
+  occur only at map edges. Now: sides with a connection are skipped, and edge sides are judged against vanilla
+  *edge* statistics (`edge_stats`, all vanilla outdoor maps' unconnected edges). Vanilla: 0 rows. Sol 6.1 v3
+  maps: many edge rows, a real problem: `pk map new` leaves the border = fill tile (plain grass), so every
+  tree touching the map edge looks cut in game. The row says to set the border with `pk map border`.
+- **Kit.** The index stores `cuts` (perimeter sides that slice a vanilla-constrained object side): 91536 of
+  113061 windows cut something. `kit find` skips them unless `--allow-cuts`. `kit fit` pastes each candidate
+  in memory and keeps it only if WARN OBJECT in/around the box does not grow; a first version that only
+  checked the piece's own sides disagreed with real pastes on 15/78 pieces (it missed the target's trees
+  reaching into the piece); the paste-based check agrees 177/177 on three test boxes.
+- **round-3 test change:** `test_fit_sources` kept its target (>= 10 source maps) but moved from 0,0,2x2
+  (inside Pallet's tree wall, where every one of 78 candidates breaks a tree) to 4,15,4x3 (16 sources). New
+  `test_fit_never_offers_object_breaking_pieces` pastes every offered piece on both boxes.
+- **Solvers.** `terrain.repair` skips a candidate that adds broken object sides; `terrain.auto` writes nothing
+  when its fill would break objects (`refused: would break N object sides`); `--options` marks such options
+  `BREAKS`. Tests: `tests/test_objects.py` (SolversKeepObjects).

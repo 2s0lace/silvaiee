@@ -129,7 +129,7 @@ class KitIndexTest(unittest.TestCase):
     def test_write_and_load_index_round_trip(self):
         entry = dict(map='Synthetic', x=2, y=2, w=6, h=4, pair='A+B', classes={'surf': 0.5, 'walk': 0.5},
                      edges={'top': 'walk', 'bottom': 'surf', 'left': 'mixed', 'right': 'mixed'},
-                     features=['shore'], curvy=0, portable=False)
+                     features=['shore'], curvy=0, portable=False, cuts=0)
         with tempfile.TemporaryDirectory() as tmp:
             repo = Repo(tmp)
             path = kit.write_index(repo, [entry])
@@ -223,7 +223,7 @@ class KitFindTest(unittest.TestCase):
         self.assertEqual([e['map'] for _, e in hits],
                          ['MapA_Frlg', 'MapF_Frlg', 'MapC_Frlg', 'MapE_Frlg', 'MapB_Frlg'])
         self.assertEqual([t for t, _ in hits], ['exact', 'exact', 'exact', 'near', 'near'])
-        self.assertEqual(counts, dict(matched=5, exact=3, near=2))   # MapD (6x4) is out of range
+        self.assertEqual(counts, dict(matched=5, exact=3, near=2, cut=0))   # MapD (6x4) is out of range
 
     def test_shore_query_ranks_curvy_then_fewer_mixed(self):
         hits, _ = kit.find(FIXTURES, top='walk', bottom='surf')
@@ -347,6 +347,21 @@ class KitFindTest(unittest.TestCase):
         png, notes = kit.sheet(self.repo, [('any', window('NoSuchMap_Frlg'))])
         self.assertIsNone(png)
         self.assertEqual(len(notes), 1)
+
+class KitCutsTest(unittest.TestCase):
+    def test_window_cuts_counts_glued_border_sides(self):
+        glued = {'N': {(2, 2)}, 'S': {(3, 5)}, 'W': set(), 'E': {(7, 3)}}
+        self.assertEqual(kit.window_cuts(glued, 2, 2, 6, 4), 3)     # top (2,2), bottom (3,5), right (7,3)
+        self.assertEqual(kit.window_cuts(glued, 0, 0, 2, 2), 0)
+
+    def test_find_skips_cutting_windows_unless_allowed(self):
+        base = dict(map='M', y=0, w=6, h=4, pair='A+B', classes={'walk': 1.0}, features=[], curvy=0,
+                    portable=False, edges={'top': 'walk', 'bottom': 'walk', 'left': 'walk', 'right': 'walk'})
+        entries = [dict(base, x=0, cuts=0), dict(base, x=2, cuts=2)]
+        hits, counts = kit.find(entries)
+        self.assertEqual(([e['x'] for _, e in hits], counts['cut']), ([0], 1))
+        hits, counts = kit.find(entries, allow_cuts=True)
+        self.assertEqual(len(hits), 2)
 
 
 if __name__ == '__main__':

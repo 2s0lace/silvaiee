@@ -15,3 +15,6 @@ Features: shore (surf next to walk), pond (surf that does not touch the window e
 Skipped windows: any event cell (no NPCs, signs or warps are copied), any door cell, any window with one class > 85%.
 
 Portable: every metatile id is below the primary metatile limit. Old indexes rebuild automatically.
+Broken objects: pieces whose border slices a tree, rock or cliff (cuts>0 in the index) are skipped by
+ kit find unless --allow-cuts. kit fit pastes every candidate in memory and offers only pieces that add no
+ WARN OBJECT in or around the box (a cut is fine where the target continues the object).

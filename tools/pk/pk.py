@@ -192,7 +192,7 @@ def dispatch(repo, tx, argv):
         result = map_check.run(repo, tx, args[0] if args else 'all', opts, pagination)
     elif noun == 'kit':
         args, opts = options(tail, values=('size', 'top', 'bottom', 'left', 'right', 'feature', 'pair', 'limit'),
-                             flags=('sheet',))
+                             flags=('sheet', 'allow-cuts'))
         if not args:
             raise PkError('PARSE', 'usage: pk kit index | find [filters] | fit MAP x,y,WxH')
         from pk.maps import kit as map_kit

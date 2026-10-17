@@ -256,12 +256,24 @@ def repair(repo, pair, rules, grid, box, ring=2, frozen=frozenset(), passes=16, 
 
     before = {p: grid.at(*p) for p in targets}
     order = sorted(targets)
+    from .objects import Glue, count_in
+    glue = Glue(repo, grid, pair)
+
+    def objects_with(x, y, cell):
+        """Broken object sides around (x, y) if the cell held `cell` (the grid is restored after)."""
+        old = grid.at(x, y)
+        grid.set(x, y, cell)
+        n = count_in(glue, [(x, y)])
+        grid.set(x, y, old)
+        return n
+
     for _ in range(passes):
         changed = 0
         for (x, y) in order:
             old = grid.at(x, y)
             material = rules.material(old)
             best, best_cost = old[0], cell_cost(x, y, old[0])
+            base_objects = None
             for metatile in sorted(rules.by_mat.get(material, ())):
                 if metatile == old[0]:
                     continue
@@ -271,6 +283,11 @@ def repair(repo, pair, rules, grid, box, ring=2, frozen=frozenset(), passes=16, 
                 # outside-ring cell used to turn walkable into wall or water into land, because the
                 # material names disagree with the collision/behaviour bits (e.g. 0x045 `water_151`).
                 if cost < best_cost and phys(bits_for(repo, pair, rules, metatile, material, old)) == phys(old):
+                    # Never trade a seam for a broken tree/rock/cliff (WARN OBJECT).
+                    if base_objects is None:
+                        base_objects = count_in(glue, [(x, y)])
+                    if objects_with(x, y, bits_for(repo, pair, rules, metatile, material, old)) > base_objects:
+                        continue
                     best, best_cost = metatile, cost
             if best != old[0]:
                 grid.set(x, y, bits_for(repo, pair, rules, best, material, old))
@@ -445,6 +462,9 @@ def auto(repo, tx, query, box_text, diag_weight=0.5, options_count=None, pick=No
     box = [p for p in box_all if p not in set(frozen)]
     ring = [p for p in ring_cells(grid, (x0, y0, w, h), 1) if p not in set(box_all)]
     before = len(unseen(grid, rules, box + ring))
+    from .objects import Glue, count_in
+    glue = Glue(repo, grid, pair)
+    objects_before = count_in(glue, box + ring)
     if options_count is not None:
         if options_count < 1:
             raise PkError('BOUNDS', '--options must be >= 1')
@@ -462,11 +482,13 @@ def auto(repo, tx, query, box_text, diag_weight=0.5, options_count=None, pick=No
                     grid.set(*p, default_bits(repo, pair, fill[p], old))
                     changed_n += 1
             seams_n = len(unseen(grid, rules, box + ring))
+            objects_n = count_in(glue, box + ring) - objects_before
             rel = f'.pk/render/auto_{grid.name}_{idx}.png'
             out_path = repo.path(rel)
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_bytes(meta.render_png(repo, grid, pair, rrect, scale=3))
-            rows.append(f'option {idx}: seams {seams_n}, changed {changed_n}, png {rel}')
+            rows.append(f'option {idx}: seams {seams_n}, changed {changed_n}, png {rel}'
+                        + (f', BREAKS {objects_n} object sides (would be refused)' if objects_n > 0 else ''))
             rows.append(f'pk terrain auto {grid.name} {x0},{y0},{w}x{h} --pick {idx}')
         grid.cells[:] = before_cells
         if len(fills) < options_count:
@@ -490,6 +512,13 @@ def auto(repo, tx, query, box_text, diag_weight=0.5, options_count=None, pick=No
         if result[p] != old[0]:
             grid.set(*p, default_bits(repo, pair, result[p], old))
             changed.append(p)
+    objects_after = count_in(glue, box + ring)
+    if objects_after > objects_before:
+        # A fill that cuts a tree, rock or cliff is worse than the gap it closes: write nothing.
+        grid.cells[:] = before_cells
+        return Result(f'terrain auto {grid.name} {x0},{y0},{w}x{h} refused: would break '
+                      f'{objects_after - objects_before} object sides (trees/rocks/cliffs); nothing written',
+                      ['INFO grow the box to include the whole object, or paste a kit piece instead'])
     save(tx, grid)
     bad = unseen(grid, rules, box + ring)
     rows = changed_view(grid, pair, changed or box, 'class')
