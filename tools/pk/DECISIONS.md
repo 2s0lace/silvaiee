@@ -1063,3 +1063,19 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - **Skipped:** *stamp holes in repair* needs a new `placed`-relative rim definition (more than ~20 lines
   and data-dependent to test), so it is left for a dedicated task. *REPEAT parsing/count in aiceus* is
   fixed with findings 6-7 (aiceus edits wait for the parallel builds).
+
+## Broken objects: `WARN OBJECT` (2026-10-17, Claude Opus; owner: "trees need their upper half")
+- Benchmark v3 maps had trees cut in half and rock formations without their edges; SEAM caught the pairs but
+  never said what was wrong. New `pk/maps/objects.py`: for each wall/ledge-class cell (trees, rocks, cliffs,
+  fences, ledges), each cardinal side whose vanilla neighbours are constrained (<= 4 metatiles cover >= 95% of
+  >= 8 uses, from the tile-card counts) must have a neighbour vanilla actually uses there; otherwise
+  `WARN OBJECT @x,y 0xMMM needs above: 0xAAA 99%, ... (has 0xBBB)`.
+- Measured: 0 rows on all 72 vanilla outdoor maps (by construction for interior sides). First version used
+  "rare < 1%" and also checked map edges against border blocks: 3209 vanilla rows (2138 at edges, the
+  border alignment is not right yet). Now only never-seen neighbours count and map-edge checks are off
+  (`EDGES = False`) until the border phase is verified.
+- Sol 6.1 v3 maps: objects 3 / 8 / 56 / - / 25, e.g. `@14,2 0x01C needs above: 0x014 99% (has 0x010)` = the two
+  headless trees on map 5, plus rock faces (0x070-0x07A) missing their top/bottom rows.
+- `pk map lint` lists OBJECT rows first and prints `objects:N`; not part of score/severity (calibration kept).
+  `--annotate` draws them magenta, thicker, on top; aiceus shows OBJECT as its own check.
+  Tests: `tests/test_objects.py` (vanilla 0; a painted-over upper half is reported at the right cell).

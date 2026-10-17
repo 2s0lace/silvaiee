@@ -233,7 +233,7 @@ def render_png(repo, grid, pair, rect, scale=1, grid_lines=False):
     return buf.getvalue()
 
 
-ANNOTATION_COLORS = {'SEAM': 'red', 'RARE': 'orange', 'STAIR': 'purple', 'RECT': 'teal', 'EMPTY': 'blue'}
+ANNOTATION_COLORS = {'OBJECT': 'magenta', 'SEAM': 'red', 'RARE': 'orange', 'STAIR': 'purple', 'RECT': 'teal', 'EMPTY': 'blue'}
 
 
 def annotate_png(png, rect, scale, warns):
@@ -255,7 +255,8 @@ def annotate_png(png, rect, scale, warns):
             for x in (2, margin + image.width + 2):
                 pen.text((x, margin + (y - y0) * tile), str(y), fill='black')
     count, notes = 0, []
-    for line in warns:
+    # Broken objects last, so their boxes sit on top of the many seam boxes and stay visible.
+    for line in sorted(warns, key=lambda l: l.split()[1] == 'OBJECT'):
         kind = line.split()[1]
         point = re.search(r'@(\d+),(\d+)', line)
         span = re.search(r'(\d+),(\d+)-(\d+),(\d+)', line)
@@ -279,7 +280,7 @@ def annotate_png(png, rect, scale, warns):
                margin + (min(xb + 1, x0 + w) - x0) * tile - 1,
                margin + (min(yb + 1, y0 + h) - y0) * tile - 1)
         color = ANNOTATION_COLORS[kind]
-        pen.rectangle(box, outline=color, width=2)
+        pen.rectangle(box, outline=color, width=4 if kind == 'OBJECT' else 2)
         pen.text((box[0] + 2, box[1] + 2), f'@{xa},{ya}', fill=color, stroke_width=1, stroke_fill='white')
         count += 1
     buf = io.BytesIO()

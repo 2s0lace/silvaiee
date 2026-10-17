@@ -562,6 +562,15 @@ def run(repo, query, show_all=False):
                 rows += lines[:cap]
                 if len(lines) > cap:
                     cut.append(f'INFO {check} +{len(lines) - cap} more (use --all)')
+    # Broken multi-tile objects (a tree without its upper half, a rock without its top): listed first,
+    # because they are the most visible defect. Not part of score/severity (those stay calibrated).
+    from .objects import check as broken_objects
+    objects = broken_objects(repo, grid, pair)
+    if show_all or len(objects) <= cap:
+        rows = objects + rows
+    else:
+        rows = objects[:cap] + rows
+        cut.append(f'INFO OBJECT +{len(objects) - cap} more (use --all)')
     infos = []
     if counts['seams'] is None or counts['rare'] is None:
         infos.append('INFO no snapshot; run pk map lint --snapshot')
@@ -578,7 +587,7 @@ def run(repo, query, show_all=False):
     if base is not None:
         delta = f' (vanilla:{base.get("severity", 0.0):.1f}, {severity - base.get("severity", 0.0):+.1f})'
     patch_text = '' if patch is None else f' patch:{patch:.2f}'
-    summary = f'{header} score:{score} severity:{severity:.1f}{delta}{patch_text}'
+    summary = f'{header} objects:{len(objects)} score:{score} severity:{severity:.1f}{delta}{patch_text}'
     return Result(summary, infos + rows)
 
 

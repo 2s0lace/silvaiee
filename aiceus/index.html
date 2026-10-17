@@ -8,7 +8,7 @@
 :root {
   --bg: #f4f3ef; --panel: #ffffff; --line: #dedbd2; --text: #1d1c1a; --muted: #6f6b62;
   --accent: #2f6fdb; --sel: rgba(47,111,219,.25);
-  --SEAM: #e5484d; --RARE: #f2a516; --STAIR: #8e4ec6; --RECT: #12a594; --EMPTY: #3e63dd; --REPEAT: #d97706; --INFO: #6f6b62;
+  --OBJECT: #ff2fb3; --SEAM: #e5484d; --RARE: #f2a516; --STAIR: #8e4ec6; --RECT: #12a594; --EMPTY: #3e63dd; --REPEAT: #d97706; --INFO: #6f6b62;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -118,7 +118,7 @@ label { color: var(--muted); }
 
 <script>
 const $ = id => document.getElementById(id);
-const CHECKS = ['SEAM', 'RARE', 'STAIR', 'RECT', 'EMPTY', 'REPEAT'];
+const CHECKS = ['OBJECT', 'SEAM', 'RARE', 'STAIR', 'RECT', 'EMPTY', 'REPEAT'];
 let maps = [], cur = null, lint = [], zoom = 3, sel = null, drag = null, tickets = [];
 const hidden = new Set();   // lint checks switched off in the legend
 

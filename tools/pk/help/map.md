@@ -13,6 +13,9 @@ Exceptions override defaults, including every event-overlay cell; --no-events ne
 More than 10% exceptions: full grid for that layer. Ties use the lower value; elev is hexadecimal.
 Parse symbol=value from the right (counter symbol: ==0); split the header at "; exceptions ".
 pk map lint MAP (read-only; thresholds in tools/pk/data/lint_map.json; 0 is clean)
+WARN OBJECT @x,y 0xMMM needs above: 0xAAA 99%, ... (has 0xBBB): a tree, rock, cliff or ledge tile whose side
+ vanilla always fills with a few specific tiles (e.g. a tree crown without its upper half). Listed first;
+ counted as objects:N in the summary, not in score/severity. 0 on every vanilla outdoor map.
  map lint is experimental and not yet calibrated on all vanilla maps.
  pk map lint --snapshot: the only writer of tools/pk/data/vanilla_adjacency.json; it freezes the
   vanilla h/v/diagonal pair counts, the 3x3 metatile-window counts and known metatiles per tileset
