@@ -104,6 +104,28 @@ class RepairKeepsPiece(MapTest):
                         **{'from': 'Route21_North_Frlg', 'repair': True})
         self.assertFalse(any(r.startswith('WARN repair changed') for r in good.data), good.data)
 
+    def test_copy_repair_honours_a_frozen_set(self):
+        # A piece pasted just below a protected area: its repair ring reaches rows y=14..15, which
+        # repair rewrites unless those cells are passed as `frozen` (blueprints pass keep | stamped |
+        # footprint). `frozenset()` is the control: the seed must still reach keep, or the test lies.
+        from pk.core.repo import Repo
+        from pk.core.journal import Transaction
+        from pk.maps import edit
+        keep = {(x, y) for y in range(12, 16) for x in range(4, 10)}
+
+        def changed(frozen):
+            tx = Transaction(Repo(self.repo.root), 'frozen')
+            repo = Repo(self.repo.root, tx)
+            base, _ = load(repo, 'PalletTown_Frlg')
+            before = {p: base.at(*p) for p in keep}
+            edit.command(repo, tx, ['copy', 'PalletTown_Frlg', '4,28,6x4', '4,16'],
+                         {'from': 'Route21_North_Frlg', 'repair': True, 'frozen': frozen})
+            grid, _ = load(repo, 'PalletTown_Frlg')
+            return [p for p in keep if grid.at(*p) != before[p]]
+
+        self.assertEqual(changed(frozenset(keep)), [])
+        self.assertTrue(changed(frozenset()), 'the fixture no longer reaches keep; repair is not exercised')
+
 
 class ReachWriteTest(MapTest):
     def test_wall_across_pallet_south_exit_warns_with_right_count(self):

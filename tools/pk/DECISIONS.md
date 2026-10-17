@@ -998,3 +998,17 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_core.Protocol -v`: `--repair` and
   `--repair --ring 1` both exit 0 through `cli.main([...])`. Against the previous `pk.py` the test
   fails with `1 != 0 : ERR PARSE unknown or incomplete --repair; use pk help`.
+
+## Review fix 3: blueprint kitbash respects `keep` and frozen cells (2026-10-17, DeepSeek)
+- The `bp['kitbash']` loop ignored `keep` entirely: a `copy` box just outside a `keep` region ran
+  `terrain.repair(ring=2)`, which rewrote keep cells inside the ring, and an `auto` box could be laid
+  over `keep`. Now a kitbash `copy`/`auto` box that intersects `keep` is rejected with `CONFLICT`, and
+  `frozen = keep | stamped | footprint` is threaded into `terrain.repair` via a new `frozen` option of
+  `map copy --repair` and into a new `frozen` parameter of `terrain.auto` (frozen cells are removed from
+  the box, so the solver cannot rewrite them).
+- `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_round3.BlueprintKitbashTest -v`: 5 tests
+  pass. New: a `copy`/`auto` box over `keep` gives `CONFLICT`; the kitbash step passes `keep` as
+  `repair`'s frozen set. `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_terrain_auto.py
+  -k_copy_repair_honours_a_frozen_set`: `Route21_North_Frlg 4,28,6x4` pasted at `4,16` changes keep cell
+  `4,15` with an empty frozen set and leaves it alone with `frozen=keep`. Against the previous code all
+  three fail (`PkError not raised`, `('repair', set())`, `[(4,15)] != []`).

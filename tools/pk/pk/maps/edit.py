@@ -342,7 +342,8 @@ def command(repo, tx, args, opts):
         if opts.get('repair'):
             from . import terrain
             rules = terrain.Rules(repo, pair, include_pk=False)
-            repaired = terrain.repair(repo, pair, rules, grid, (dx, dy, w, h), int(opts.get('ring', 2)), outside_only=True)
+            repaired = terrain.repair(repo, pair, rules, grid, (dx, dy, w, h), int(opts.get('ring', 2)),
+                                      outside_only=True, frozen=opts.get('frozen') or frozenset())
             warn = terrain.repair_warning((dx, dy, w, h), repaired)
             if warn:
                 notes.append(warn)

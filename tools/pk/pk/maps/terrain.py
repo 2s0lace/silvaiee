@@ -423,11 +423,12 @@ def auto_fills(grid, rules, box, options, count):
     return fills
 
 
-def auto(repo, tx, query, box_text, diag_weight=0.5, options_count=None, pick=None):
+def auto(repo, tx, query, box_text, diag_weight=0.5, options_count=None, pick=None, frozen=frozenset()):
     """Fill a box from its surroundings: every cell may become any common vanilla metatile of the pair
     (no material is given), and the solver picks what fits the frozen neighbours by vanilla adjacency.
     Water | box | grass becomes a shoreline. Doors and warps are never candidates; Pk* drafts are never
-    reference data."""
+    reference data. `frozen` cells inside the box are kept untouched (used by blueprints to protect the
+    `keep` area and structure footprints)."""
     from .layers import parse_rect
     from .lint import physical_class
     from . import meta, reach
@@ -441,8 +442,9 @@ def auto(repo, tx, query, box_text, diag_weight=0.5, options_count=None, pick=No
     before_cells = list(grid.cells)
     options = sorted(m for m, n in rules.freq.items()
                      if n >= AUTO_MIN_FREQ and physical_class(pair.behavior_name(m), 0) != 'door')
-    box = [(x, y) for y in range(y0, y0 + h) for x in range(x0, x0 + w)]
-    ring = [p for p in ring_cells(grid, (x0, y0, w, h), 1) if p not in set(box)]
+    box_all = [(x, y) for y in range(y0, y0 + h) for x in range(x0, x0 + w)]
+    box = [p for p in box_all if p not in set(frozen)]
+    ring = [p for p in ring_cells(grid, (x0, y0, w, h), 1) if p not in set(box_all)]
     before = len(unseen(grid, rules, box + ring))
     if options_count is not None:
         if options_count < 1:

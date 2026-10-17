@@ -186,6 +186,45 @@ class BlueprintKitbashTest(unittest.TestCase):
             with self.assertRaises(PkError):
                 parse(f'blueprint PkR3Blueprint_Frlg v1\nterrain\n  {step}')
 
+    def test_kitbash_rejects_a_box_that_covers_keep(self):
+        # A copy/auto box may not be laid over the protected keep area.
+        for step in ('copy PalletTown_Frlg 0,0,4x4 @2,2', 'auto 2,2,4x4'):
+            with self.subTest(step=step):
+                self.tx.stage('tools/pk/tests/round3_keep.bp',
+                              f'blueprint PkR3Blueprint_Frlg v1\nterrain\n  keep 0,0 4x4\n  {step}\n'.encode())
+                with mock.patch.object(bp_apply, 'Repo', return_value=self.baseline):
+                    with self.assertRaises(PkError) as caught:
+                        bp_apply.run(self.repo, self.tx, 'tools/pk/tests/round3_keep.bp', 'apply', {})
+                self.assertEqual(caught.exception.code, 'CONFLICT')
+
+    def test_kitbash_copy_repair_never_touches_keep(self):
+        # A copy box just below the keep area; its repair ring reaches rows y=14..15 of keep, which
+        # repair used to overwrite. The kitbash step must pass `keep` through as repair's frozen set.
+        self.tx.stage('tools/pk/tests/round3_keep.bp',
+                      b'blueprint PkR3Blueprint_Frlg v1\nterrain\n  keep 4,12 6x4\n'
+                      b'  copy Route21_North_Frlg 4,28,6x4 @4,16\n')
+        keep = {(x, y) for y in range(12, 16) for x in range(4, 10)}
+        seen = []
+        real_repair, real_auto = terrain.repair, terrain.auto
+
+        def capture_repair(*args, **kwargs):
+            seen.append(('repair', set(kwargs.get('frozen') or ())))
+            return real_repair(*args, **kwargs)
+
+        def capture_auto(*args, **kwargs):
+            seen.append(('auto', set(kwargs.get('frozen') or ())))
+            return real_auto(*args, **kwargs)
+
+        with mock.patch.object(bp_apply, 'Repo', return_value=self.baseline), \
+             mock.patch.object(terrain, 'repair', side_effect=capture_repair), \
+             mock.patch.object(terrain, 'auto', side_effect=capture_auto):
+            try:
+                bp_apply.run(self.repo, self.tx, 'tools/pk/tests/round3_keep.bp', 'apply', {})
+            except PkError:
+                pass          # the pasted piece trips the later reach gate; the frozen set is what we check
+        self.assertTrue(seen, 'kitbash called no repair/auto')
+        self.assertTrue(all(keep <= frozen for _, frozen in seen), seen)
+
 
 class ShapeTest(unittest.TestCase):
     def test_owner_audit_rules(self):

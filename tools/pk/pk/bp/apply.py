@@ -161,6 +161,15 @@ def xy(text):
     return (int(m[1]), int(m[2])) if m else None
 
 
+def box_cells(text):
+    """'x,y,WxH' -> set of cells (a kitbash auto box), or an empty set when malformed."""
+    m = re.fullmatch(r'(\d+),(\d+),(\d+)x(\d+)', text or '')
+    if not m:
+        return set()
+    x, y, w, h = (int(v) for v in m.groups())
+    return {(x + i, y + j) for j in range(h) for i in range(w)}
+
+
 def structure_cells(repo, bp):
     cells = set()
     for e in entities(bp, 'structures'):
@@ -360,13 +369,27 @@ def run(repo, tx, path, mode, opts):
         warns += [x[5:] for x in r.data if x.startswith('WARN ')]
     # Kitbash operations follow every material brush, in their original file order.
     from ..maps import edit as map_edit, terrain as map_terrain
+    protect = stamped | keep | footprint      # repair must never reach into the keep area or a footprint
     for n, words in bp['kitbash']:
         try:
             if words[0] == 'copy':
+                size = re.fullmatch(r'(\d+),(\d+),(\d+)x(\d+)', words[2])
+                at = xy(words[3])
+                if size and at:
+                    tw, th = int(size.group(3)), int(size.group(4))
+                    box = {(at[0] + i, at[1] + j) for j in range(th) for i in range(tw)}
+                    clash = sorted(box & keep)
+                    if clash:
+                        raise PkError('CONFLICT', f'copy box @{at[0]},{at[1]} covers the keep area at '
+                                      f'{clash[0][0]},{clash[0][1]}')
                 r = map_edit.command(repo, tx, ['copy', name, words[2], words[3][1:]],
-                                     {'from': words[1], 'repair': True})
+                                     {'from': words[1], 'repair': True, 'frozen': protect})
             else:
-                r = map_terrain.auto(repo, tx, name, words[1])
+                box = box_cells(words[1])
+                clash = sorted(box & keep)
+                if clash:
+                    raise PkError('CONFLICT', f'auto box covers the keep area at {clash[0][0]},{clash[0][1]}')
+                r = map_terrain.auto(repo, tx, name, words[1], frozen=protect)
         except PkError as exc:
             raise PkError(exc.code, f'{path}:{n}: {exc}') from None
         ops.append(r.summary)
