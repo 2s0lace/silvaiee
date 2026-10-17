@@ -202,6 +202,15 @@ class Protocol(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertTrue(output.startswith(f'ERR {expected} '))
 
+    def test_stamp_place_repair_flags_are_accepted(self):
+        # The dispatcher's stamp branch listed neither --repair nor --ring, so the documented
+        # `pk stamp place MAP STAMP X,Y --repair [--ring N]` died at the CLI with ERR PARSE.
+        for extra in (['--repair'], ['--repair', '--ring', '1']):
+            output, code = cli.main(['stamp', 'place', 'PalletTown_Frlg', 'tree', '2,2',
+                                     *extra, '--dry-run'], root=ROOT)
+            self.assertEqual(code, 0, output)
+            self.assertTrue(output.startswith('OK stamp tree placed in PalletTown_Frlg at 2,2'), output)
+
 
 class RealFormats(unittest.TestCase):
     def test_all_map_json_roundtrip(self):

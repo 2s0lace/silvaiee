@@ -989,3 +989,12 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   `0,0,24x1` sealing the Route1 exit → `WARN reach: 2 cells cut off, e.g. 12,0 13,0`. The existing
   `0,16,24x1` south-exit case now reports the union (`245`, was `47`). Against the previous code the two
   new tests and the updated count all fail (`reach: ok` / `47`).
+
+## Review fix 2: `pk stamp place --repair` now parses (2026-10-17, DeepSeek)
+- The dispatcher's `stamp` branch (`pk.py`) listed neither `repair` nor `ring`, although
+  `pk/maps/create.py` implements `if opts.get('repair')` / `int(opts.get('ring', 2))` and
+  `help/map.md` documents `pk stamp place MAP STAMP X,Y --repair`, so the CLI answered
+  `ERR PARSE unknown or incomplete --repair`. Added `'ring'` to `values` and `'repair'` to `flags`.
+- `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_core.Protocol -v`: `--repair` and
+  `--repair --ring 1` both exit 0 through `cli.main([...])`. Against the previous `pk.py` the test
+  fails with `1 != 0 : ERR PARSE unknown or incomplete --repair; use pk help`.
