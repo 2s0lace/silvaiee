@@ -975,3 +975,17 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   name_audit 482/2819 (per-pair rows and the unused-tile fallback inflate the first).
 - Sheet `.pk/render/cards_<pair>.png` (30 tiles, 10 per family, scale 3, role under each) for the owner.
   AGENT.md stays 39 lines; `pk help` equals it.
+
+## Review fix 1: per-entrance reach cuts (2026-10-17, DeepSeek)
+- `reach.check_write` no longer unions all warps into one seed (which hidden a wall splitting the town:
+  the union still reached both halves) and no longer ignores map edges whenever a warp exists. Every
+  entrance from `World.entrances()` (each `warp#*`, each `edge *`) is walked on its own; a cell a given
+  entrance could reach before and cannot any more is reported even if another entrance still reaches it.
+  The warp-free branch's `min(cuts, key=len)` (which hid the bigger cut) is gone: the reported set is the
+  union over entrances. An entrance that disappears from the new map (its whole edge walled shut) has its
+  former reachable set reported too.
+- `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_terrain_auto.ReachWriteTest -v`: 4 tests
+  pass. New: a wall at `12,0,1x20` splitting Pallet Town → `WARN reach: 242 cells cut off`; a wall at
+  `0,0,24x1` sealing the Route1 exit → `WARN reach: 2 cells cut off, e.g. 12,0 13,0`. The existing
+  `0,16,24x1` south-exit case now reports the union (`245`, was `47`). Against the previous code the two
+  new tests and the updated count all fail (`reach: ok` / `47`).

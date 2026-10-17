@@ -107,12 +107,26 @@ class RepairKeepsPiece(MapTest):
 
 class ReachWriteTest(MapTest):
     def test_wall_across_pallet_south_exit_warns_with_right_count(self):
-        # Rows 17..19 have 15 + 16 + 16 = 47 walkable cells south of y=16.
+        # A wall at y=16 severs the town from its south exit: the warps and edge up lose the
+        # 47-cell south bank, and edge down loses the whole north town, so the union is reported.
         result = self.map('paint', 'PalletTown_Frlg', '0,16,24x1', '0x01D')
-        self.assertEqual(result.data[-1], 'WARN reach: 47 cells cut off, e.g. 2,17 3,17 4,17 5,17 6,17')
+        self.assertEqual(result.data[-1], 'WARN reach: 245 cells cut off, e.g. 2,2 3,2 4,2 5,2 6,2')
         # A subsequent harmless write compares before vs after this write only.
         second = self.map('paint', 'PalletTown_Frlg', '3,3', '0x004')
         self.assertEqual(second.data[-1], 'reach: ok')
+
+    def test_wall_splitting_town_in_two_warns(self):
+        # A solid wall at x=12 severs warp#0 (west house) from warp#1/#2 (east house, lab) and the
+        # north road; unioning the warps used to hide it because the union still reached both halves.
+        result = self.map('paint', 'PalletTown_Frlg', '12,0,1x20', '0x01D')
+        self.assertEqual(result.data[-1], 'WARN reach: 242 cells cut off, e.g. 2,2 3,2 4,2 5,2 6,2')
+
+    def test_wall_sealing_north_exit_warns(self):
+        # Painting y=0 solid walls the only exit to Route1 (edge up, cells 12,0 and 13,0). The
+        # entrance disappears from the new map; edge entrances used to be ignored whenever warps
+        # existed, so this stayed 'reach: ok'.
+        result = self.map('paint', 'PalletTown_Frlg', '0,0,24x1', '0x01D')
+        self.assertEqual(result.data[-1], 'WARN reach: 2 cells cut off, e.g. 12,0 13,0')
 
     def test_harmless_writes_and_no_entrance_info(self):
         from pk.maps import create

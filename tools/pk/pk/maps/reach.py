@@ -152,7 +152,6 @@ def check_write(repo, pair, before_cells, grid):
     if not old_entries:
         return 'INFO reach: not checked (no entrance)'
     new_entries = new_world.entrances()
-    warps = [k for k in old_entries if k.startswith('warp#')]
 
     def walkable(world):
         return {(x, y) for y in range(grid.h) for x in range(grid.w)
@@ -161,25 +160,23 @@ def check_write(repo, pair, before_cells, grid):
 
     walk_before = walkable(old_world)
     walk_after = walkable(new_world)
-    if warps:
-        old_starts = set().union(*(old_entries[k] for k in warps))
-        new_starts = set().union(*(new_entries.get(k, set()) for k in warps))
-        before = old_world.reach(old_starts, set()) & walk_before
-        after = new_world.reach(new_starts, set()) if new_starts else set()
-        cut = (before & walk_after) - after
-    else:
-        cuts = []
-        for k in sorted(old_entries):
-            before = old_world.reach(old_entries[k], set()) & walk_before
-            new_starts = new_entries.get(k, set())
-            after = new_world.reach(new_starts, set()) if new_starts else set()
-            c = (before & walk_after) - after
-            if c:
-                cuts.append(c)
-        cut = min(cuts, key=len) if cuts else set()
-    if not cut:
+    # Every entrance is checked on its own. Unioning the warps into one seed hid a wall that cuts
+    # the map in two (the union still reaches both halves), and ignoring the map edges hid a sealed
+    # connection. A cell that one entrance could reach before and cannot reach any more is reported
+    # even when another entrance still reaches it: a player who came in through the wrong entrance
+    # would be stuck. An entrance that disappears (its whole edge became wall) is caught the same way.
+    cuts = set()
+    for key, cells in old_entries.items():
+        before = old_world.reach(cells, set()) & walk_before
+        new_starts = new_entries.get(key, set())
+        if not new_starts:
+            cuts |= before            # the whole entrance was sealed (e.g. an exit walled shut)
+            continue
+        after = new_world.reach(new_starts, set())
+        cuts |= (before & walk_after) - after
+    if not cuts:
         return 'reach: ok'
-    ordered = sorted(cut, key=lambda p: (p[1], p[0]))
+    ordered = sorted(cuts, key=lambda p: (p[1], p[0]))
     sample = ' '.join(f'{x},{y}' for x, y in ordered[:5])
     return f'WARN reach: {len(ordered)} cells cut off, e.g. {sample}'
 
