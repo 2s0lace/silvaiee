@@ -141,9 +141,10 @@ def dispatch(repo, tx, argv):
         else:
             result = map_meta.command(repo, tx, args, opts, pagination)
     elif noun == 'terrain':
-        args, opts = options(tail, values=('offset', 'limit', 'rect', 'dir', 'stamp', 'diag', 'options', 'pick'))
+        args, opts = options(tail, values=('offset', 'limit', 'rect', 'dir', 'stamp', 'diag', 'options', 'pick',
+                                           'width', 'material'))
         if not args:
-            raise PkError('PARSE', 'usage: pk terrain learn|show|brush|river|ledge|forest|bake')
+            raise PkError('PARSE', 'usage: pk terrain learn|show|brush|path|river|ledge|forest|bake')
         result = map_terrain.command(repo, tx, args, opts, pagination)
     elif noun == 'bp':
         args, opts = options(tail, values=('offset', 'limit', 'status', 'section', 'out', 'region', 'rect', 'scale'),

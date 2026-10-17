@@ -5,6 +5,17 @@ outside-in, then refines. Changed cells plus a 1-cell margin are re-tiled; margi
 pk terrain learn MAP (materials and their metatile counts for the map's tileset pair)
 pk terrain show MAP [--rect] (material view)
 pk terrain brush MAP rect x,y,WxH MATERIAL | circle x,y,r MATERIAL | path x,y x,y ... [width=n] MATERIAL
+pk terrain path MAP x1,y1 x2,y2 [x3,y3 ...] [--width 2] [--material path|sand] [--options 3] [--pick n]
+ Routes use deterministic A* and bend at least every 8 cells (the vanilla outdoor-road p95). Walls,
+ water, doors, warps/events, and cells holding together trees/rocks are blocked. A blocked door waypoint
+ gets a safe adjacent edge cap. Width is limited to the measured vanilla range (1..6; median 2).
+ --options N writes no map data and renders N deterministic alternatives at scale 3; --pick N applies one.
+ Painting uses the terrain solver plus its 1-tile auto-join ring. A write is refused if it adds a broken
+ object side or reduces reachability; successful output includes the lint and reach summaries.
+ Road families include grass-tagged edge/corner tiles sharing the vanilla road interior's colour.
+ Join cleanup freezes objects/events and preserves collision/elevation. Previews mark unsafe fills
+ REFUSED; writing checks each entrance in all six ability states. Options/pick accept 1..20.
+ Experimental: the wiped Route 1 acceptance fixture still misses its seam limit (see sol_path_report.md).
 pk terrain river MAP x,y x,y ... [width=n] (water path)
 pk terrain ledge MAP x1,y1 x2,y2 [--dir s|n|e|w]
 pk terrain forest MAP rect x,y,WxH --stamp tree (tile a stamp, e.g. a 2x2 tree from pk stamp extract)

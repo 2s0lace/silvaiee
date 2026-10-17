@@ -1116,3 +1116,17 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - Benchmark v3 (not blind): Argon 1-2 no rows (open 5-6%, mirror 47-59%); Sol 6.1 and Gemini flagged (Gemini 5
   71% lawn, Gemini's park 93% mirrored, Sol's park 84%). Islands are not caught (sea is not lawn); a
   curviness measure would be next. To be validated against the owner's blind scores.
+
+## Path material and safety improvement (2026-10-17, Codex)
+- Corrected the earlier diagnosis: road edges 0x0DB/0x0DD/0x0D4/0x0E4 are tagged grass, but contain the
+  dominant road-interior colour. Path rules now include these tiles locally without changing sidecars.
+  A bounded adjacency search retile handles the road plus its one-cell ring; obstacles/events remain
+  frozen, collision/elevation are preserved, and every entrance is checked in all six ability states.
+- New OBJECT identities are compared, not just totals; previews label unsafe alternatives REFUSED and
+  pick/options reject zero. On original Route 1 the path now has 0 seams and 0 new OBJECT, reach unchanged.
+- Corrected the benchmark: PkPathTest_Frlg is an in-memory clone with 192 walkable road-family cells wiped
+  to grass. That wipe already breaks 12 ledge sides; painting adds 0, keeps reach unchanged, has max
+  straight run 8 and gives 3 distinct routes/PNGs, but still has 73 seams against a limit of 5. STOP on
+  that required miss; Pallet junctions deferred. Comparison: .pk/render/path_route1.png. The inherited
+  width 2/p95 6, axis-run p95 8, width-change 35.4% figures are cross-section statistics, not a validated
+  between-bend skeleton measurement. See tasks/sol_path_report.md and tests/test_paths.py --benchmark.

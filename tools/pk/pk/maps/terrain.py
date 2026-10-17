@@ -532,6 +532,9 @@ def auto(repo, tx, query, box_text, diag_weight=0.5, options_count=None, pick=No
 
 def command(repo, tx, args, opts, pagination):
     verb, rest = args[0], args[1:]
+    if verb == 'path':
+        from . import paths
+        return paths.command(repo, tx, rest, opts)
     if verb == 'auto' and len(rest) == 2:
         opt_n = int(opts['options']) if 'options' in opts else None
         pick_n = int(opts['pick']) if 'pick' in opts else None
@@ -591,4 +594,4 @@ def command(repo, tx, args, opts, pagination):
         rules = Rules(repo, pair)
         targets = {(x, y): rules.material(grid.at(x, y)) for y in range(y0, y0 + h) for x in range(x0, x0 + w)}
         return apply(repo, tx, grid, pair, rules, targets, 'bake')
-    raise PkError('PARSE', 'usage: pk terrain learn|show|brush|river|ledge|forest|bake; see pk help terrain')
+    raise PkError('PARSE', 'usage: pk terrain learn|show|brush|path|river|ledge|forest|bake; see pk help terrain')
