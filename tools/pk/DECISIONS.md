@@ -1035,3 +1035,14 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   `map seam PkSandbox2_Frlg 4,4,4x4` now returns `WARN 18 seams still unseen after repair` plus a reach
   line (both absent before: `0 != 2 : []`, and `outside_only` was `None`).
 - `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_terrain_auto -v`: 15 tests pass.
+
+## Review fix 8: `Rules` excludes Pk* drafts by default (2026-10-17, DeepSeek)
+- `terrain.Rules.__init__` defaulted to `include_pk=True`, so `pk terrain brush`, `river`, `ledge`,
+  `bake` and `learn` learned metatile frequencies and pair transitions from `LAYOUT_PK_*` scratch maps,
+  although the project rule (terrain.py docstring) says Pk* drafts are never reference data and repair/
+  auto/bp already pass `include_pk=False`. The default is now `False`.
+- `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_terrain -v`: 6 tests pass. New
+  `test_rules_exclude_pk_drafts_by_default` shows `Rules(repo, pair)` equals `include_pk=False` and is
+  smaller than `include_pk=True` for Pallet Town's pair (7 vs 32 layouts). On the previous default it
+  fails with `AssertionError: 32 != 7`.
+- `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_terrain_auto -v`: 15 tests still pass.

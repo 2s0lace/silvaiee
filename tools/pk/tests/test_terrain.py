@@ -34,6 +34,16 @@ class Terrain(unittest.TestCase):
         self.assertIn('layouts:', result.summary)
         self.assertTrue(any(r.startswith('water ') for r in result.data))
 
+    def test_rules_exclude_pk_drafts_by_default(self):
+        # Pk* drafts are never reference data, so the default must behave as include_pk=False; brush,
+        # river, ledge, bake and learn used to learn frequencies from LAYOUT_PK_* scratch maps.
+        _, pair = load(self.repo, 'PalletTown_Frlg')
+        default = Rules(self.repo, pair)
+        without = Rules(self.repo, pair, include_pk=False)
+        withpk = Rules(self.repo, pair, include_pk=True)
+        self.assertEqual(default.layouts, without.layouts)
+        self.assertLess(default.layouts, withpk.layouts)
+
     def test_brush_sets_material_and_respects_margin(self):
         grid, pair = load(self.repo, 'PalletTown_Frlg')
         rules = Rules(self.repo, pair)

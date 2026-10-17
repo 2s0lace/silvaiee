@@ -20,7 +20,7 @@ from .tiles import Pair
 
 class Rules:
     """Adjacency statistics of one tileset pair, learned from every vanilla layout using it."""
-    def __init__(self, repo, pair, include_pk=True):
+    def __init__(self, repo, pair, include_pk=False):
         self.pair = pair
         key = (pair.primary['symbol'], pair.secondary['symbol'])
         self.h, self.v, self.freq, self.by_mat = {}, {}, {}, {}
