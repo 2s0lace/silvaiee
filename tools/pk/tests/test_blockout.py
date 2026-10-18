@@ -28,7 +28,7 @@ if not (ROOT / 'data/maps/Route1_Frlg').is_dir():
 
 class Format(unittest.TestCase):
     def test_roundtrip_and_fixed_alphabet(self):
-        rows = ['T.pg~', 'srvfb', '^<>..']
+        rows = ['T.pg~', 'srvfb', '^<>.n']
         self.assertEqual(blockout.parse(blockout.serialize(rows), 5, 3), rows)
 
     def test_ambiguous_old_l_is_rejected(self):
@@ -297,7 +297,8 @@ class Forest(unittest.TestCase):
         with patch.object(blockout, 'learning_reference', return_value=object()), \
              patch('pk.maps.wfc.learn', return_value=self.vocab) as learn, \
              patch('pk.maps.wfc.fill', return_value=fill) as solve, \
-             patch.object(blockout, 'hard_solve', return_value=dict(ok=True, assignment=dict(fill), steps=1)):
+             patch.object(blockout, 'hard_solve', return_value=dict(ok=True, assignment=dict(fill), steps=1)), \
+             patch.object(blockout, 'HardObjects', return_value=SimpleNamespace(validates=lambda a: True)):
             notes = blockout.forest(object(), grid, object(), rows, self.rules, choices, bits,
                                     exclude=('Route1_Frlg',))
         self.assertEqual(learn.call_args.kwargs['exclude'], ('Route1_Frlg',))
@@ -314,7 +315,8 @@ class Forest(unittest.TestCase):
              patch('pk.maps.wfc.learn', return_value=self.vocab), \
              patch('pk.maps.wfc.fill', return_value=fill), \
              patch.object(blockout.terrain, 'solve', return_value=dict(fill)) as solve, \
-             patch.object(blockout, 'hard_solve', return_value=dict(ok=True, assignment=dict(fill), steps=1)):
+             patch.object(blockout, 'hard_solve', return_value=dict(ok=True, assignment=dict(fill), steps=1)), \
+             patch.object(blockout, 'HardObjects', return_value=SimpleNamespace(validates=lambda a: True)):
             notes = blockout.forest(object(), grid, object(), rows, self.rules, choices, bits)
         self.assertEqual(solve.call_args.kwargs['margin'], 0)
         self.assertEqual(solve.call_args.kwargs['choices'], choices)
@@ -477,6 +479,98 @@ class HardConstraints(unittest.TestCase):
             blockout.ledge_rows(None, grid, None, rows, None, choices, bits)
         self.assertEqual(sorted(map(len, calls)), [2, 2, 2])
         self.assertEqual(set().union(*calls), {(0, 0), (1, 0), (3, 0), (4, 0), (0, 2), (1, 2)})
+
+
+class ObjectRegions(unittest.TestCase):
+    def test_fence_card_uses_one_cell_thickness_not_names(self):
+        line = dict(cls='wall', uses=20, nbr={d: {'wall': n, 'walk': 20 - n}
+                    for d, n in [('N', 2), ('S', 1), ('E', 19), ('W', 18)]}, name='tree')
+        self.assertTrue(blockout.fence_card(line))
+        line['nbr']['S'] = {'wall': 20}
+        self.assertFalse(blockout.fence_card(line))  # two-row object, not a line
+        line['uses'] = 1
+        self.assertFalse(blockout.fence_card(line))
+
+    def test_fence_is_exported_separately_from_tree(self):
+        repo = Repo(ROOT)
+        grid, pair = load(repo, 'Route1_Frlg')
+        classify = blockout.classifier(repo, pair)
+        self.assertEqual(classify.letter((0x0E7, 1, 0)), 'n')
+        self.assertEqual(classify.letter((0x01C, 1, 0)), 'T')
+        rows = classify.export(grid)
+        self.assertIn('n', ''.join(rows))
+        self.assertEqual(blockout.parse(blockout.serialize(rows), grid.w, grid.h), rows)
+
+    def test_two_cell_erosion_keeps_outline_and_holes_in_band(self):
+        component = {(x, y) for y in range(12) for x in range(12)}
+        self.assertEqual(len(blockout.region_interior(component)), 64)
+        component.remove((6, 6))
+        interior = blockout.region_interior(component)
+        self.assertNotIn((4, 4), interior)
+        self.assertIn((2, 2), interior)
+
+    def test_interior_dominant_learned_context_respects_every_domain(self):
+        grid = HardConstraints.Grid(w=12, h=12)
+        component = {(x, y) for y in range(12) for x in range(12)}
+        rows = ['r' * 12] * 12
+        choices = {p: [3, 4] for p in component}
+        bits = {p: {3: (3, 1, 0), 4: (4, 1, 0)} for p in component}
+        rules = SimpleNamespace(context3={'r' * 9: Counter({(3, 1, 0): 90, (4, 1, 0): 10})},
+                                material=lambda cell: 'r')
+        model = SimpleNamespace(pair_ok=lambda *a: True)
+        with patch.object(blockout, 'HardObjects', return_value=model):
+            plan, detail = blockout.interior_plan(None, grid, None, rows, rules, choices, bits, component, 'r')
+            self.assertEqual(len(plan), 64)
+            self.assertEqual(set(plan.values()), {3})
+            choices[5, 5] = [4]
+            plan, _ = blockout.interior_plan(None, grid, None, rows, rules, choices, bits, component, 'r')
+            self.assertEqual(set(plan.values()), {4})
+        self.assertIn('dominant:0x003', detail)
+
+    def test_all_object_letters_are_whole_connected_components(self):
+        grid = HardConstraints.Grid(w=5, h=3)
+        rows = ['rr.nn', 'rr.TT', '...TT']
+        choices = {(x, y): [8] for y in range(3) for x in range(5)}
+        bits = {p: {8: (8, 0, 0)} for p in choices}
+        calls = []
+        rules = SimpleNamespace(material=lambda cell: '.', context3={})
+        # Record before the deliberately empty letter domains are rejected.
+        original = blockout.connected_regions
+        def components(cells, *args):
+            if cells:
+                calls.append(set(cells))
+            return original(cells, *args)
+        with patch.object(blockout, 'connected_regions', side_effect=components), \
+             patch.object(blockout, 'learning_reference', side_effect=PkError('TEST', 'skip WFC')):
+            notes = blockout.object_regions(None, grid, None, rows, rules, choices, bits)
+        self.assertEqual(sorted(map(len, calls)), [2, 4, 4])
+        self.assertTrue(any('connected-regions:3' in row for row in notes))
+
+    def test_large_rock_solves_band_only_and_rolls_back_on_failure(self):
+        for ok in (True, False):
+            grid = HardConstraints.Grid(w=12, h=12)
+            before = list(grid.cells)
+            rows = ['r' * 12] * 12
+            choices = {(x, y): [3] for y in range(12) for x in range(12)}
+            bits = {p: {3: (3, 1, 0)} for p in choices}
+            rules = SimpleNamespace(context3={'r' * 9: Counter({(3, 1, 0): 20})},
+                                    material=lambda cell: 'r')
+            calls = []
+            def solved(repo, grid, pair, rows, rules, choices, bits, region, **kwargs):
+                calls.append(set(region))
+                return dict(ok=ok, assignment={p: 3 for p in region}, steps=42, reason='test refusal')
+            model = SimpleNamespace(pair_ok=lambda *a: True, validates=lambda *a: True)
+            with patch.object(blockout, 'learning_reference', side_effect=PkError('TEST', 'skip WFC')), \
+                 patch.object(blockout, 'HardObjects', return_value=model), \
+                 patch.object(blockout.terrain, 'solve', return_value={p: 3 for p in choices}), \
+                 patch.object(blockout, 'hard_solve', side_effect=solved):
+                notes = blockout.object_regions(None, grid, None, rows, rules, choices, bits)
+            self.assertEqual([len(c) for c in calls], [80])
+            self.assertTrue(any('size:144 interior:64 boundary/rim:80' in n for n in notes))
+            if ok:
+                self.assertEqual(set(grid.cells), {(3, 1, 0)})
+            else:
+                self.assertEqual(grid.cells, before)
 
 
 def benchmark(rebuilds_only=False):

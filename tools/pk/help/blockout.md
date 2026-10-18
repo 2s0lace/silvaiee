@@ -3,7 +3,7 @@ pk map blockout MAP --export [--out .pk/NAME.blockout]
 pk map blockout MAP FILE --check (read-only, no cache or render writes)
 pk map blockout PkBlockNAME_Frlg FILE [--dry-run]
 Format: blockout 1, then exactly this legend, then exactly the map's rows:
-legend T=trees .=lawn p=path g=tallgrass ~=water s=sand r=rock v=ledge_s ^=ledge_n <=ledge_w >=ledge_e f=flowers b=building
+legend T=trees n=fence .=lawn p=path g=tallgrass ~=water s=sand r=rock v=ledge_s ^=ledge_n <=ledge_w >=ledge_e f=flowers b=building
 v south, ^ north, < west, > east match pk map show's physical ledge directions.
 Old l is invalid, not an alias. Unknown letters, changed legend and wrong sizes
 are errors. Existing b cells only; buildings are never invented by the tiler.
@@ -13,8 +13,13 @@ side; * is a wildcard beyond a connected side, never a file letter. A diagonal
 crossing a connected side is also unknown. Both learned and target contexts use
 objects.connected_sides. 3x3 is row-major; four-neighbour keys are centre,N,E,S,W.
 Export uses physical classes, tile cards and the existing provisional rendered-
-palette heuristic for visual categories. That classifier is unchanged and still
-needs visual review; semantic letter fidelity is not proof of good graphics.
+palette heuristic for visual categories. n separates wall-class fence/hedge lines
+using tile-card physical neighbour counts: both transverse sides <40% wall and
+at least one longitudinal continuation >60% wall, with >=ROLE_MIN observations.
+Two-row/2x2 tree objects do not meet that line criterion. Names/tags are ignored.
+The remaining classifier is still heuristic and needs visual review; semantic
+letter fidelity is not proof of good graphics. Export the new legend again for
+old blockouts; the old legend is not silently interpreted as the extended one.
 
 Candidate learning: only exported vanilla outdoor blockouts. Exclude a benchmark
 map's entire layout, including aliases, before learning context/pair statistics.
@@ -37,7 +42,15 @@ sides use the exact border through Glue.broken_side, identical to lint's rules.
 Only b cells are initially frozen. ALL other cells, including lawn and cells under
 events, get context-restricted candidates. Event metadata is not modified.
 First establish a globally coherent hard-object seed. Then solve each connected
-T region in one atomic pass with its mutable non-building rim, never in sections.
+T, r, or n region in one atomic pass with its mutable non-building rim, never in
+sections. Other object regions and ledge rows are not overwritten by that rim.
+For regions >=128 cells, erode two cells from the outline (including holes).
+Pin that interior to the dominant tile in the LOO homogeneous 3x3 letter context
+only if every interior domain permits its observed tuple and exact object rules
+permit all self-neighbours. Otherwise report why no dominant interior was pinned.
+Solve the remaining two-cell boundary/rim jointly with WFC/context candidates and
+hard objects; validate the whole interior+band before acceptance. Failure rolls
+back the whole region. Report symbol, size, interior/band sizes and solver steps.
 Each connected ledge row is also one atomic pass (horizontal for v/^, vertical
 for </>). Finish the rest/lawn without overwriting forest or ledge phases.
 WFC and pair proposals must pass exact Glue.broken_side constraints, with arc
@@ -64,30 +77,31 @@ Acceptance: python tools/pk/tests/test_blockout.py --benchmark
 Resume rebuilds: python tools/pk/tests/test_blockout.py --benchmark --rebuilds-only
 Benchmarks edit grids only in memory; comparison PNGs and full coordinate audit
 logs (.pk/render/blockout_MAP.txt) are journaled, never map data.
-Previous accepted round trips: 10/10, 13812/13812, exact tuples unchanged; see DECISIONS.md.
-Latest acceptance: python tools/pk/tests/test_blockout.py --benchmark --rebuilds-only
+Latest acceptance: python tools/pk/tests/test_blockout.py --benchmark
+Round trips PASS: all 10 maps, 13812/13812 = 100%, exact tuples unchanged,
+revalidated with n=fence in the legend.
 Route1 leave-one-out PASS: 960/960 = 100.00% letters; new OBJECT:0;
-original reach_lost:0; open_bank:0. Initial exact/four/letter:856/75/29.
-116 cells widened in 161 reported steps; final exact/four/letter/any:844/75/37/4.
-Hard coherent seed solved all 960 cells. Four connected forests were atomic:
-one WFC proposal, three seen-pair fallbacks, all hard-validated. Ten ledge rows
-solved atomically. Final local repair skipped explicitly: no broken sides.
-The render still has fence-like right-wall substitutions classified as T;
-letter/object acceptance is not a claim of exact graphical reconstruction.
-Route22 leave-one-out FAIL: 210/1152 = 18.23% letters; new OBJECT:13;
-original reach_lost:0; open_bank:3. A hard contradiction remains at 4,0 beside
-a frozen building. The seed/rest were refused; 3x3/5x5 repairs fixed 0,
-leaving 13 broken sides. Object rules were not relaxed. STOP, targets unchanged.
+original reach_lost:0; open_bank:0. Four T components, two n components and one
+r component were solved with hard objects. Right-wall trees are restored in the
+comparison render. The n components have sizes 9 and 7; hard search 86 and 66 steps.
+Route22 leave-one-out FAIL: 600/1152 = 52.08% letters; new OBJECT:13;
+original reach_lost:0; open_bank:6. Its largest r component has 331 active cells:
+44 depth-two interior cells choose 0x071 from LOO context, boundary/rim 348.
+WFC uses 15 steps, but the band fails a hard boundary domain at 4,2; the entire
+region is rolled back. The 46-cell rock component/rim 67 solves in 1340 hard
+steps (33 WFC steps before pair fallback). Full region sizes/steps are in the audit.
+The hard contradiction at 4,0 beside frozen b remains; seed is refused. Final
+3x3/5x5 repairs fix 0 and leave 13 broken sides around the gate. STOP, no relaxation.
 Comparison PNGs and full coordinate audits:
 .pk/render/blockout_Route1_Frlg.png and .txt;
 .pk/render/blockout_Route22_Frlg.png and .txt.
-Original is left, proposal right. Audit headers/benchmark reach compare with
-original vanilla; generic WARN reach compares with the wiped lawn instead.
+Original is left, proposal right. Audit headers/benchmark OBJECT and reach compare
+with original vanilla; generic INFO OBJECT/WARN reach compare with the wiped lawn.
 No game-map data changed. Remaining three rebuilds, coastal map and Parts 2-3
-were explicitly skipped at the first miss. Previous 10-map round trips were
-explicitly skipped on this resumed run; their earlier 100% pass remains recorded.
-Unit command above: 37 tests pass in the game workspace. Public-copy command:
-python release/silvaiee/tools/pk/tests/test_blockout.py (result in DECISIONS.md).
+were explicitly skipped at the first miss.
+python tools/pk/tests/test_blockout.py -> 43 tests PASS.
+python release/silvaiee/tools/pk/tests/test_blockout.py -> 43 run, OK (skipped=2);
+the optional WFC module is absent only in the public checkout, explicitly reported.
 API evidence: lint.py physical_class:32/vanilla_outdoor:815; wfc.py learn:113,
 fill:544/Fill:145; terrain.py solve:83/Rules.pair_score:79; objects.py Glue:121,
 broken_side:151/neighbour:141/connected_sides:63/constrained:110/SIDES:22;

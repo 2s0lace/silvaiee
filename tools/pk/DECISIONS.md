@@ -1326,3 +1326,48 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - STOP at the first target miss. INFO skipped: remaining three rebuilds, coastal map,
   Parts 2-3 and v3 table; earlier 10/10 round trips were explicitly skipped on this resumed
   run (their previous 13812/13812 pass is unchanged). Part 1 remains WIP.
+
+## Blockout all-object regions, interior bands and fence legend (2026-10-18, Part 1 WIP)
+- Owner revision: extend connected-region solving from T to T/r/n. Added n=fence to the
+  fixed file legend, parser and letter collision adapter; old l remains invalid. Fence
+  classification uses wall-class tile cards only: >=ROLE_MIN uses, both transverse wall
+  shares <0.4, at least one longitudinal continuation >0.6. Names/tags never select tiles.
+  Palette heuristics for other classes remain provisional; this is not semantic perfection.
+- Each T/r/n component is atomic. Its mutable rim excludes other object letters and ledges.
+  For >=128-cell regions, erode the outline by two cells (including holes), then choose the
+  dominant observed tuple in the LOO homogeneous 3x3 letter context. Pin only when every
+  interior domain permits it and exact object rules allow self-neighbours; otherwise report
+  why no interior was pinned. WFC solves only the boundary/rim, pair fallback remains
+  context-restricted, and exact hard-object validation checks the combined result.
+  Failure rolls back the entire interior+band. Region sizes and WFC/hard steps are reported.
+  The coherent seed also uses the same interior conditioning; no object rule was relaxed.
+- API evidence: cards.aggregate:106/finalize:144/ROLE_MIN:64; wfc.learn:113/fill:544,
+  Fill.steps:152; objects.Glue.broken_side:151. No other agent's solver was edited.
+- Command: python tools/pk/tests/test_blockout.py -> 43 tests PASS. Added fence-vs-tree
+  physical-card tests, real Route1 fence export, hole-aware erosion, dominant-context domain
+  checks, T/r/n component grouping, and large-rock boundary-only solve/full rollback tests.
+  Command: python release/silvaiee/tools/pk/tests/test_blockout.py -> 43 run, OK (skipped=2).
+  Explicit INFO explains missing optional WFC in the public copy; its benchmark is not claimed.
+- Command: python tools/pk/tests/test_blockout.py --benchmark:
+  Round trips PASS: 10 maps, 13812/13812=100%, exact tiles unchanged with extended n legend.
+  Route1_Frlg LOO PASS: 960/960=100% letters, new_OBJECT:0, original reach_lost:0,
+  open_bank:0. Seven object regions (four T, two n, one r) and ten ledge rows are hard-valid.
+  Fence components 9/7 cells use 86/66 hard steps; right-wall trees are restored in the PNG.
+- The same command stops at Route22_Frlg LOO FAIL: 600/1152=52.08% letters (<95%),
+  new_OBJECT:13 (target 0), original reach_lost:0, open_bank:6. Largest active r component:
+  331 cells, interior:44 using dominant 0x071, boundary/rim:348; WFC:15 steps then hard
+  boundary-domain failure at 4,2 (0 hard steps), whole region rolled back. The 46-cell
+  rock component plus rim (67) solves in 1340 hard steps after WFC fallback (33 steps).
+  The context contradiction at 4,0 remains. 3x3/5x5 local repair fixes 0, leaves 13 sides.
+- Read-only API diagnosis (Repo/load/classifier/Glue/learning_reference via python -c):
+  gate roof ends at 4,0 / 12,0 are 0x2C0 / 0x2C2 exported r; its middle 0x2C1 is b and
+  remains frozen. Raw middle sockets W:{704:3,705:18}, E:{705:18,706:3}; no remaining
+  same-pair vanilla observations of these secondary IDs exist after layout-level holdout.
+  Thus the current building classifier splits one building and leaves unsupported fixed
+  sockets. Region generalisation improves the proposal but cannot solve that contradiction.
+- Artifacts: .pk/render/blockout_Route1_Frlg.png/.txt and blockout_Route22_Frlg.png/.txt;
+  original left, proposal right, full widening and region/repair audit. Benchmark headers
+  compare OBJECT/reach with original vanilla; generic INFO OBJECT/WARN reach use the wipe.
+  No game-map writes, ROM builds, pushes or threshold relaxation.
+- STOP at first acceptance miss. Remaining three rebuilds, coastal map, Parts 2-3 and v3
+  table explicitly skipped; Part 1 remains WIP.
