@@ -1504,3 +1504,43 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   reports it unsafe, which the benchmark does not use. A first run stopped on Pallet with 2 open banks: the sea family
   left out the rim corners (they touch no open tile); banks now follow their neighbours.
 - No game-map data outside the test map, no `pk build`, no `pk bp apply`, no push.
+
+## Blockout: edge orientation, thin objects, benchmark respects safe (2026-10-18, Claude Sonnet, owner review of coast_v2)
+- **1. Edge orientation.** FRLG edge, corner and mixed tiles (tile card family not `open`) are half grass / half sand;
+  letters cannot say which side carries the rim. `ContextDomains.activate`: such a tile stays in a cell's domain only where
+  that very cell matched a vanilla 3x3 or 4-neighbour letter pattern; at letter / any-non-door widening only open tiles are
+  offered (plus the tiles an object beside the cell *requires*, `socket_tiles`: vanilla's own pairing, tried last). A cell at
+  letter level or beyond is named `WARN BLOCKOUT reshape x,y (no vanilla edge for this letter pattern)`, with `[no open tile of
+  its letter either]` for ledges, fence ends and flowers (no open tile exists; the edge nearest to the cell's vanilla contexts
+  is taken). Remnants no hard window could solve get open tiles only (they used to be decorated with edge tiles chosen one by one:
+  wedges and rims on the wrong side). Widening a window's conflict cell stops at the 4-neighbour level. Where no vanilla shore
+  fits a water/sand pair the pair rule is relaxed for that cell only (never the open-water requirement) and named
+  (`WARN reshape ... no vanilla shore`). A water cell with no open family tile in its context widens.
+  **Check:** `INFO BLOCKOUT edge orientation`: every placed non-open tile whose 4-neighbour letter context vanilla (all outdoor
+  layouts, the rebuilt map included) never puts it in, each with a reason: no open tile of its letter / required beside an object /
+  object edge no pattern fits / whole vanilla object / misplaced. Only *misplaced* makes a proposal unsafe.
+  **Target "0 mismatches" is not reachable and was not loosened silently:** total mismatches are coast 9, Route 1 16, Route 22 16,
+  Pallet 7, Route 3 1, Kindle Road 6, all with misplaced 0 (ledge/fence/flower letters have no open tile; leave-one-out cannot see
+  the held-out map's own ledge contexts). Owner decides whether the unavoidable categories should also fail a rebuild.
+- **3. Thin objects.** `fence_card` is now "one cell thick on an axis" (neither side mostly wall): fences, hedges, posts, one-cell
+  bushes are `n`; a green rock top (pillar cap) follows its rock neighbours (`follows_neighbours`, raw card counts + colour letters)
+  and becomes `r`. 437 of 96091 portable vanilla cells letter differently between pairs (243 before). Small `T` groups that remain
+  are trees, filled with the exact vanilla shape (`shape_template`: tree, pair, L). A region cell with no tile of its letter widens,
+  then is unlocked (every tile of the letter, edge tiles included) and named. Object letters lost on rebuilds: Route 22 10 -> 1,
+  Pallet 5 -> 0, Route 3 6 -> 0, Kindle Road 1 -> 0.
+- **2. Benchmark respects `safe`.** `tile(..., baseline=GRID)` measures new object warnings and lost reach against GRID (a rebuild
+  passes the original vanilla map; against the wipe `safe` was always false); a rebuild flagged unsafe fails. `safe` now also needs
+  no lost object letter, one water family per region, no misplaced edge tile.
+- **Fixed on the way:** stale working domains after a widening in `sectioned_solve` (KeyError); the cumulative domain at widened
+  levels (never fewer candidates than the cell's own matches).
+- **Coast (re-tiled from the updated coast.txt):** safe, fidelity 100.00%, 0 WARN OBJECT, one water family (0x12B 128/128), both trees
+  whole, T 88/88. Reshape WARNs name what to redraw: flowers at 21,2 21,3 8,7 (no vanilla pattern beside trees / mid-lawn), the tree
+  at 4,3 touching tall grass, the caps at 18,6 19,6 under tall grass, tree-wall ends standing directly on sand (0-1,10-12 and
+  22-23,10-14), sand/water joins at 7-9,12-13, 23,14-15, 0,15-16. Render `.pk/render/coast_v3.png`. Known: three wedge-shaped
+  lawn tiles (3,4 2,10 21,11) pass the letter-level check; the check cannot see tile-level adjacency.
+- **Tests:** 80 pass (`python tools/pk/tests/test_blockout.py`).
+- **Benchmark:** round trips 10/10 = 13812/13812. Rebuilds: Route 1 100.00% safe, Pallet 100.00% safe, Route 3 100.00% safe, Kindle
+  Road 100.00% safe (0 new WARN OBJECT, 0 reach lost, 0 open banks); **Route 22 FAILS**: 99.91%, one lost object letter (33,3 r->n)
+  so unsafe: a gate corner where no open or required rock tile satisfies the ledge row beside it, and even offering every rock tile
+  the region stays contradictory. `--benchmark` therefore stops at Route 22 (as the target rule demands); the other three
+  rebuilds were run with the same `tile()` call outside the harness (`diag`), identical to the harness's checks.

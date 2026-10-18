@@ -585,6 +585,170 @@ class ObjectRegions(unittest.TestCase):
                 self.assertEqual(grid.cells, before)
 
 
+class EdgeOrientation(unittest.TestCase):
+    """Edge, corner and mixed tiles (tile card family not open) are half-and-half: letters cannot say which side
+    carries the rim, so they only stand where a vanilla 3x3 / 4-neighbour letter pattern matched."""
+    def rules(self, cards_, letters):
+        return SimpleNamespace(
+            context3={}, context4={}, letters=letters, classify=SimpleNamespace(cards=cards_),
+            pair=SimpleNamespace(behavior_name=lambda mt: 'NORMAL'))
+
+    def domains(self, cards_):
+        rows = ['...', '.p.', '...']
+        letters = {'.': Counter({(8, 0, 3): 1}),
+                   'p': Counter({(10, 0, 3): 3, (20, 0, 3): 2, (30, 0, 3): 9})}
+        rules = self.rules(cards_, letters)
+        rules.context3[blockout.letter_context(rows, 1, 1)] = Counter({(10, 0, 3): 3})
+        return blockout.ContextDomains(rows, rules, frozenset()), rows
+
+    def test_letter_and_any_levels_offer_open_tiles_only_plus_the_cells_own_matches(self):
+        cards_ = {8: {'family': 'open'}, 10: {'family': 'edge'}, 20: {'family': 'open'}, 30: {'family': 'corner'}}
+        choices, _ = self.domains(cards_)
+        self.assertEqual(choices[1, 1], [10])
+        choices.activate((1, 1), 2)
+        self.assertEqual(sorted(choices[1, 1]), [10, 20])              # 30 is an edge tile with no pattern match
+        choices.activate((1, 1), 3)
+        self.assertNotIn(30, choices[1, 1])                            # nor does any-non-door bring it back
+
+    def test_without_cards_every_tile_stays_available(self):
+        choices, _ = self.domains(None)
+        choices.activate((1, 1), 2)
+        self.assertEqual(sorted(choices[1, 1]), [10, 20, 30])
+
+    def test_a_letter_with_no_open_tile_keeps_edges_and_is_reported(self):
+        cards_ = {8: {'family': 'open'}, 10: {'family': 'edge'}, 20: {'family': 'edge'}, 30: {'family': 'edge'}}
+        choices, _ = self.domains(cards_)
+        choices.activate((1, 1), 2)
+        self.assertEqual(sorted(choices[1, 1]), [10, 20, 30])
+        rows = [r for r in choices.reshape() if ' 1,1 ' in r]
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].startswith('WARN BLOCKOUT reshape 1,1 (no vanilla edge for this letter pattern)'))
+        self.assertIn('no open tile of its letter either', rows[0])
+
+    def test_reshape_lists_only_cells_widened_to_letter_level_or_beyond(self):
+        cards_ = {8: {'family': 'open'}, 10: {'family': 'edge'}, 20: {'family': 'open'}, 30: {'family': 'corner'}}
+        choices, _ = self.domains(cards_)
+        choices.levels = {p: 0 for p in choices.levels}
+        self.assertEqual(choices.reshape(), [])
+        choices.activate((1, 1), 1)
+        self.assertEqual(choices.reshape(), [])
+        choices.activate((1, 1), 2)
+        self.assertEqual(len([r for r in choices.reshape() if ' 1,1 ' in r]), 1)
+
+    def test_wrong_context_is_counted_for_non_open_tiles_only(self):
+        rows = ['...', '.p.', '...']
+        grid = HardConstraints.Grid(w=3, h=3)
+        grid.cells = [(8, 0, 3)] * 9
+        grid.set(1, 1, (10, 0, 3))
+        good = blockout.letter_context(rows, 1, 1, True)
+        rules = SimpleNamespace(classify=SimpleNamespace(cards={8: {'family': 'open'}, 10: {'family': 'edge'}}),
+                                tile_context4={10: {good}})
+        self.assertEqual(blockout.edge_orientation(grid, rows, rules, frozenset()), (1, []))
+        rules.tile_context4 = {10: {'.pppp'}}                          # vanilla only puts it on lawn
+        checked, bad = blockout.edge_orientation(grid, rows, rules, frozenset())
+        self.assertEqual(checked, 1)
+        self.assertTrue(bad[0].startswith('WARN BLOCKOUT edge context 1,1 0x00A'))
+        rules.tile_context4 = {10: {'*' * 5}}                          # a connected side is a wildcard
+        self.assertEqual(blockout.edge_orientation(grid, rows, rules, frozenset())[1], [])
+
+    def test_remnant_cells_get_open_tiles_not_edge_tiles_chosen_one_by_one(self):
+        grid = HardConstraints.Grid(w=1, h=1)
+        grid.cells = [(8, 0, 3)]
+        rules = SimpleNamespace(classify=SimpleNamespace(cards={10: {'family': 'edge'}, 20: {'family': 'open'}}))
+        domains = {(0, 0): [10, 20]}
+        bits = {(0, 0): {10: (10, 0, 3), 20: (20, 0, 3)}}
+        seen = []
+
+        def solve(grid, rules, letters, **kwargs):
+            seen.append(kwargs['choices'])
+            return {(0, 0): 20}
+        fail = dict(ok=False, assignment={}, steps=1, reason='hard contradiction', conflict=[])
+        glue = SimpleNamespace(broken_side=lambda *a, **k: None)
+        with patch.object(blockout, 'hard_solve', return_value=fail), \
+             patch.object(blockout.terrain, 'solve', side_effect=solve), \
+             patch.object(blockout.objects, 'Glue', return_value=glue), \
+             patch.object(blockout.objects, 'count_in', return_value=0):
+            blockout.sectioned_solve(None, grid, None, ['.'], rules, domains, domains, bits, {(0, 0)}, {},
+                                     True, 'rest')
+        self.assertEqual(seen, [{(0, 0): [20]}])
+
+    def test_a_tile_vanilla_requires_beside_an_object_is_allowed_at_letter_level(self):
+        rows = ['T', '.']
+        cards_ = {8: {'family': 'open'}, 7: {'family': 'mixed'}, 50: {'family': 'mixed'}}
+        letters = {'T': Counter({(7, 1, 0): 5}), '.': Counter({(8, 0, 3): 1, (50, 0, 3): 4})}
+        rules = self.rules(cards_, letters)
+        rules.classify.raw = {7: {'nmt': {'N': Counter(), 'E': Counter(), 'W': Counter(), 'S': Counter({50: 20})}}}
+        rules.context3[blockout.letter_context(rows, 0, 1)] = Counter({(8, 0, 3): 1})
+        choices = blockout.ContextDomains(rows, rules, frozenset())
+        self.assertEqual(choices.socket_tiles((0, 1)), {50})
+        choices.activate((0, 1), 2)
+        self.assertEqual(sorted(choices[0, 1]), [8, 50])          # 50 is not open, but the tree above wants it
+        self.assertEqual(choices.socket_tiles((0, 0)), set())
+
+    def test_no_open_tile_takes_the_edge_whose_vanilla_contexts_are_nearest(self):
+        rows = ['...', '.p.', '...']
+        cards_ = {8: {'family': 'open'}, 10: {'family': 'edge'}, 30: {'family': 'edge'}}
+        letters = {'.': Counter({(8, 0, 3): 1}), 'p': Counter({(10, 0, 3): 3, (30, 0, 3): 9})}
+        rules = self.rules(cards_, letters)
+        rules.material = lambda cell: 'p' if cell[0] in (10, 30) else '.'
+        # 10 is used with lawn all round except one side; 30 with beach all round
+        rules.tile_context4 = {10: {'p...p'}, 30: {'ppppp'}}
+        choices = blockout.ContextDomains(rows, rules, frozenset())
+        choices.activate((1, 1), 2)
+        self.assertEqual(choices[1, 1], [10])
+        self.assertTrue(choices.no_open[1, 1])
+
+    def test_an_unlocked_object_cell_is_offered_every_tile_of_its_letter(self):
+        cards_ = {8: {'family': 'open'}, 10: {'family': 'edge'}, 20: {'family': 'open'}, 30: {'family': 'corner'}}
+        choices, _ = self.domains(cards_)
+        choices.rules.material = None
+        choices.material = lambda cell: 'p' if cell[0] in (10, 20, 30) else '.'
+        choices.activate((1, 1), 2)
+        self.assertNotIn(30, choices[1, 1])
+        choices.unlocked.add((1, 1))
+        choices.activate((1, 1), 2)
+        self.assertEqual(sorted(choices[1, 1]), [10, 20, 30])
+        self.assertIn(30, choices.extra[1, 1])                     # offered, but tried last
+
+    def test_edge_check_says_why_a_wrong_context_could_not_be_avoided(self):
+        rows = ['...', '.p.', '...']
+        grid = HardConstraints.Grid(w=3, h=3)
+        grid.cells = [(8, 0, 3)] * 9
+        grid.set(1, 1, (10, 0, 3))
+        rules = SimpleNamespace(classify=SimpleNamespace(cards={8: {'family': 'open'}, 10: {'family': 'edge'}}),
+                                tile_context4={10: {'.pppp'}})
+        for state, label in (('no_open', '[no open tile of its letter]'), ('unlocked', '[object edge no pattern fits]'),
+                             ('pinned', '[whole vanilla object]'), (None, '[misplaced]')):
+            choices = SimpleNamespace(no_open=Counter(), unlocked=set(), pinned=set(),
+                                      socket_tiles=lambda p: set())
+            if state == 'no_open':
+                choices.no_open[1, 1] += 1
+            elif state:
+                getattr(choices, state).add((1, 1))
+            _, bad = blockout.edge_orientation(grid, rows, rules, frozenset(), choices)
+            self.assertTrue(bad[0].endswith(label), (state, bad))
+
+    def test_thin_objects_are_not_trees(self):
+        def card(**shares):
+            return dict(cls='wall', uses=40, nbr={d: {'wall': round(100 * shares[d]), 'walk': 100 - round(100 * shares[d])}
+                                                   for d in 'NESW'})
+        self.assertTrue(blockout.fence_card(card(N=0, E=0, S=0, W=0)))        # a post or a one-cell bush
+        self.assertTrue(blockout.fence_card(card(N=.1, E=.9, S=.1, W=.9)))    # a hedge line
+        self.assertFalse(blockout.fence_card(card(N=.6, E=.9, S=1., W=.7)))   # a tree body
+        self.assertFalse(blockout.fence_card(dict(card(N=0, E=0, S=0, W=0), uses=1)))
+        self.assertTrue(blockout.fence_card(dict(card(N=0, E=0, S=0, W=0), uses=1), min_uses=1))
+
+    def test_a_green_rock_top_is_rock_a_tree_beside_trees_stays_a_tree(self):
+        classifier = blockout.Classifier.__new__(blockout.Classifier)
+        classifier.memo = {}
+        classifier.cards = {2: dict(cls='wall'), 3: dict(cls='wall')}
+        classifier.raw = {1: {'nmt': {'N': Counter(), 'E': Counter({2: 8}), 'S': Counter({2: 9}), 'W': Counter()}},
+                          4: {'nmt': {'N': Counter(), 'E': Counter({3: 8}), 'S': Counter({3: 9}), 'W': Counter()}}}
+        classifier.base = {(1, 1): 'T', (4, 1): 'T', (2, 1): 'r', (3, 1): 'T'}
+        self.assertEqual(classifier.letter((1, 1, 0)), 'r')
+        self.assertEqual(classifier.letter((4, 1, 0)), 'T')
+
+
 class WaterFamilies(unittest.TestCase):
     """One water family per connected water region; the sea shore against sand is a vanilla shore."""
     class Choices(dict):
@@ -722,6 +886,17 @@ class WaterFamilies(unittest.TestCase):
         with patch.object(blockout.objects, 'Glue', Glue):
             return blockout.hard_solve(None, grid, None, rows, rules, choices, bits)
 
+    def test_a_beach_cell_no_vanilla_shore_fits_is_relaxed_but_never_to_a_rim(self):
+        try:
+            blockout.SHORE_RELAX['on'] = True
+            plain = self.solve_shore([3], {3})        # open water, but vanilla never puts it beside this sand tile
+            rim = self.solve_shore([2], {3})          # a rim: still refused
+        finally:
+            blockout.SHORE_RELAX['on'], blockout.SHORE_RELAX['cells'] = False, set()
+        self.assertTrue(plain['ok'])
+        self.assertFalse(rim['ok'])
+        self.assertFalse(self.solve_shore([3], {3})['ok'])        # off again outside a tiling run
+
     def test_sand_next_to_water_needs_open_water_a_rim_never_sits_on_a_beach(self):
         self.assertEqual(self.solve_shore([1, 2], {1})['assignment'][0, 0], 1)
         refused = self.solve_shore([2], {1})
@@ -755,27 +930,38 @@ class WaterLearned(unittest.TestCase):
         self.assertTrue(self.rules.tree_templates)
         cards_ = blockout.classifier(self.repo, self.pair).cards
         for tpl in self.rules.tree_templates:
-            self.assertLessEqual(sum(len(row) for row in tpl), blockout.SMALL_TREE)
-            self.assertTrue(all(cards_[c[0]]['cls'] == 'wall' for row in tpl for c in row))
-        self.assertTrue(any(len(tpl) >= 2 and len(tpl[0]) >= 2 for tpl in self.rules.tree_templates))
+            self.assertLessEqual(len(tpl), blockout.SMALL_TREE)
+            self.assertTrue(all(cards_[cell[0]]['cls'] == 'wall' for _, _, cell in tpl))
+        # a 2x2 tree: the first cell, the one to its right, and the two below
+        self.assertTrue(any({(dx, dy) for dx, dy, _ in tpl} == {(0, 0), (1, 0), (0, 1), (1, 1)}
+                            for tpl in self.rules.tree_templates))
 
 
 class SmallTrees(unittest.TestCase):
     """A small T group is filled with whole vanilla trees or left as lawn; never fence posts or stumps."""
-    TREE = (((30, 1, 0), (31, 1, 0)), ((38, 1, 0), (39, 1, 0)))
-    POST = (((106, 1, 0),),)
-    ROW = (((30, 1, 0), (31, 1, 0), (30, 1, 0), (31, 1, 0)), ((38, 1, 0), (37, 1, 0), (36, 1, 0), (39, 1, 0)))
+    @staticmethod
+    def shape(rows):
+        return blockout.shape_template({(x, y): cell for y, row in enumerate(rows) for x, cell in enumerate(row)
+                                        if cell})
 
-    def test_covers_use_whole_trees_only_never_a_post(self):
-        templates = Counter({self.POST: 99, self.TREE: 5})       # the post is the most frequent template
-        cover = blockout.tree_covers({(1, 1), (2, 1), (1, 2), (2, 2)}, templates)
-        self.assertEqual(len(cover), 1)
-        self.assertEqual(sorted(c[0] for c in cover[0].values()), [30, 31, 38, 39])
-        self.assertEqual(blockout.tree_covers({(1, 1)}, templates), [])          # one cell: no whole tree
-        self.assertEqual(blockout.tree_covers({(0, 0), (1, 0)}, templates), [])  # 2x1: a fence, not a tree
+    TREE = shape.__func__((((30, 1, 0), (31, 1, 0)), ((38, 1, 0), (39, 1, 0))))
+    PAIR = shape.__func__((((68, 1, 0), (70, 1, 0)),))
+    ELL = shape.__func__((((5, 1, 0), None), ((5, 1, 0), (5, 1, 0))))
+
+    def test_covers_match_the_shape_of_a_vanilla_object_exactly(self):
+        templates = Counter({self.PAIR: 99, self.TREE: 5, self.ELL: 2})
+        tree = blockout.tree_covers({(1, 1), (2, 1), (1, 2), (2, 2)}, Counter({self.TREE: 5, self.ELL: 2}))
+        self.assertEqual(len(tree), 1)
+        self.assertEqual(sorted(c[0] for c in tree[0].values()), [30, 31, 38, 39])
+        pair = blockout.tree_covers({(4, 0), (5, 0)}, templates)
+        self.assertEqual([sorted(c[0] for c in cover.values()) for cover in pair], [[68, 70]])
+        ell = blockout.tree_covers({(0, 0), (0, 1), (1, 1)}, templates)
+        self.assertEqual(len(ell), 1)
+        self.assertEqual(blockout.tree_covers({(1, 1)}, templates), [])          # no one-cell object was seen
+        self.assertEqual(blockout.tree_covers({(0, 0), (0, 1)}, templates), [])  # a vertical pair: not seen either
 
     def test_two_trees_side_by_side_are_covered_exactly(self):
-        templates = Counter({self.TREE: 5, self.ROW: 1})
+        templates = Counter({self.TREE: 5})
         region = {(x, y) for x in range(4) for y in range(2)}
         covers = blockout.tree_covers(region, templates)
         self.assertTrue(covers)
@@ -877,9 +1063,11 @@ class Coast(unittest.TestCase):
         cls.grid.cells = [(0x010, 0, 3)] * len(cls.grid.cells)
         cls.report = blockout.tile(cls.repo, cls.grid, cls.pair, cls.rows)
 
-    def test_safe_and_no_new_object_warnings(self):
-        self.assertTrue(self.report['safe'], self.report['rows'][-12:])
+    def test_no_new_object_warnings_and_every_wrong_edge_context_is_reported_as_reshape(self):
         self.assertEqual(self.report['added'], 0)
+        reshape = {r.split()[3] for r in self.report['rows'] if r.startswith('WARN BLOCKOUT reshape')}
+        wrong = [r.split()[4] for r in self.report['rows'] if r.startswith('WARN BLOCKOUT edge context')]
+        self.assertTrue(set(wrong) <= reshape, (wrong, sorted(reshape)))
         self.assertFalse(any(r.startswith('WARN OBJECT') for r in self.report['rows']))
 
     def test_every_water_region_uses_one_family(self):
@@ -945,8 +1133,9 @@ def benchmark(rebuilds_only=False):
         grid.cells = [cell if rows[i // grid.w][i % grid.w] == 'b' else lawn
                       for i, cell in enumerate(original.cells)]
         print(f'INFO retile {name} learning excludes its entire layout', flush=True)
-        report = blockout.tile(repo, grid, pair, rows, exclude=(name,))
-        # Acceptance is compared with original vanilla, not the weakened wipe.
+        report = blockout.tile(repo, grid, pair, rows, exclude=(name,), baseline=original)
+        # Acceptance is compared with original vanilla, not the weakened wipe: tile() measures new object
+        # warnings and lost reach against `baseline`, and a rebuild it flags unsafe is a FAIL.
         added = len(set(blockout.objects.check(repo, grid, pair)) - set(blockout.objects.check(repo, original, pair)))
         losses = blockout.reach_losses(original, grid, pair)
         render = f'.pk/render/blockout_{name}.png'
@@ -959,9 +1148,9 @@ def benchmark(rebuilds_only=False):
                      f'original_reach_lost:{sum(losses.values())} open_bank:{report["open_bank"]}\n' +
                      '\n'.join(report['rows']) + '\n').encode('utf-8'))
         output.commit(False)
-        ok = added == 0 and not losses and report['fidelity'] >= .95 and not report['open_bank']
+        ok = report['safe'] and added == 0 and not losses and report['fidelity'] >= .95 and not report['open_bank']
         print(f'retile {name} new_OBJECT:{added} reach_lost:{sum(losses.values())} '
-              f'fidelity:{report["fidelity"]:.2%} open_bank:{report["open_bank"]} pass:{ok} render:{render} audit:{audit}', flush=True)
+              f'fidelity:{report["fidelity"]:.2%} open_bank:{report["open_bank"]} safe:{report["safe"]} pass:{ok} render:{render} audit:{audit}', flush=True)
         print('\n'.join(report['rows']), flush=True)
         actual = blockout.export(repo, grid, pair)
         mismatches = Counter(a for expected, observed in zip(rows, actual)

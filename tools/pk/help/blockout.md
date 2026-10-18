@@ -133,5 +133,20 @@ digit per cell (the game's walking height). Export always writes it; the tiler a
 Without it each tile gets its usual vanilla height (fine for flat maps; plateaus need it).
 Large maps are solved in overlapping 24x24 windows (stride 16) when the whole-map solve hits a contradiction;
 remnants get a soft fill that never breaks an object.
+Edge orientation: FRLG edge, corner and mixed tiles (tile card family not open) are half grass / half sand, and
+letters cannot say which side carries the rim. Such a tile may only stand where this very cell matched a vanilla 3x3 or
+4-neighbour letter pattern; widening to letter / any-non-door offers open tiles only, plus the tiles an object beside the
+cell requires (vanilla's own pairing). A cell that needs the wider levels is named: WARN BLOCKOUT reshape x,y (no vanilla
+edge for this letter pattern), with [no open tile of its letter either] for letters that have none (ledges, fence ends,
+flowers: the edge tile nearest to the cell's vanilla contexts is taken). Remnants no hard window could solve get open tiles
+only, never edge tiles chosen one by one. A water/sand pair no vanilla shore fits is relaxed for that cell only
+(INFO shore pair rule relaxed, WARN reshape ... no vanilla shore for this water/sand pattern); object rules never are.
+Check: INFO BLOCKOUT edge orientation lists every placed non-open tile whose 4-neighbour letter context (centre,N,E,S,W)
+vanilla (all outdoor layouts, the rebuilt map included) never puts it in: WARN BLOCKOUT edge context x,y 0xMMM ...
+[no open tile of its letter] / [required beside an object] / [misplaced]. Only misplaced ones make the proposal unsafe.
+Thin objects: n is every wall tile with one cell thickness on an axis (fence, hedge, post, bush; a green rock top follows
+its rock neighbours); small T groups left are trees and fill with the exact vanilla shapes (tree, pair, L).
+tile(..., baseline=GRID) measures new object warnings and reach against GRID (a rebuild passes the original vanilla map);
+the benchmark counts a rebuild that tile() flags unsafe as a failure.
 Water/tree acceptance: python tools/pk/tests/test_blockout.py (67 tests; WaterLearned and Coast build the learned rules,
 about two minutes). Coast map: .pk/render/coast_v2.png.

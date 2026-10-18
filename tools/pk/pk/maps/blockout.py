@@ -73,21 +73,21 @@ def serialize(rows):
     return '\n'.join(body) + '\n'
 
 
-def fence_card(card):
-    """Wall-card evidence for a one-cell line, not a two-by-two canopy.
+def fence_card(card, min_uses=None):
+    """Wall-card evidence for a thin object: a fence, hedge, post or bush, not a two-by-two canopy or a rock mass.
 
-    Opposite transverse sides mostly see non-wall; at least one longitudinal
-    side mostly sees wall. End pieces may have only one continuation. Require
-    card-level observations, never a name or a target-map coordinate.
+    A thin object is one cell thick along at least one axis: on that axis neither side is mostly wall.
+    A tree tile has wall (or a cap, then wall) on both axes; a fence tile has none across its line; a
+    single post has none at all. Card-level observations only, never a name or a target-map coordinate.
     """
-    if card.get('cls') != 'wall' or card.get('uses', 0) < cards.ROLE_MIN:
+    need = cards.ROLE_MIN if min_uses is None else min_uses
+    if card.get('cls') != 'wall' or card.get('uses', 0) < need:
         return False
     nbr = card.get('nbr', {})
     def wall(side):
         counts = nbr.get(side, {})
         return counts.get('wall', 0) / max(1, sum(counts.values()))
-    return any(max(wall(a), wall(b)) < .4 and max(wall(c), wall(d)) > .6
-               for a, b, c, d in (('N', 'S', 'E', 'W'), ('E', 'W', 'N', 'S')))
+    return max(wall('N'), wall('S')) < .5 or max(wall('E'), wall('W')) < .5
 
 
 class Classifier:
@@ -99,14 +99,44 @@ class Classifier:
     def __init__(self, repo, pair):
         self.repo, self.pair = repo, pair
         # Unlike load_cards this path writes no cache, including during --check.
-        self.cards = cards.finalize(cards.aggregate(repo, pair), pair)
-        self.memo = {}
+        self.raw = cards.aggregate(repo, pair)
+        self.cards = cards.finalize(self.raw, pair)
+        self.memo, self.base = {}, {}
 
     def letter(self, cell):
         mt, coll, _ = cell
         key = mt, coll
         if key in self.memo:
             return self.memo[key]
+        char = self.base_letter(cell)
+        if char == 'T':
+            char = self.follows_neighbours(mt) or char
+        self.memo[key] = char
+        return char
+
+    def follows_neighbours(self, mt):
+        """A green-tinted wall tile whose wall neighbours are mostly rock (a pillar's cap) or mostly thin
+        objects (a fence corner) is rock / thin, not a tree. Neighbours come from the raw card counts and
+        their colour letters, never from names. None keeps the tile a tree."""
+        rec = self.raw.get(mt)
+        if not rec:
+            return None
+        votes = Counter()
+        for side in 'NESW':
+            for other, n in rec['nmt'][side].items():
+                if self.cards.get(other, {}).get('cls') == 'wall':
+                    votes[self.base_letter((other, 1, 0))] += n
+        total = sum(votes.values())
+        for char in 'rn':
+            if total and votes[char] > .5 * total:
+                return char
+        return None
+
+    def base_letter(self, cell):
+        mt, coll, _ = cell
+        key = mt, coll
+        if key in self.base:
+            return self.base[key]
         cls = physical_class(self.pair.behavior_name(mt), coll)
         card = self.cards.get(mt, {})
         behavior = self.pair.behavior_name(mt)
@@ -131,7 +161,10 @@ class Classifier:
             beige = sum(r > b * 1.25 and g > b * 1.2 and r >= g * .88 for r, g, b in pixels) / n
             bright = sum(r > g * 1.3 or b > g * 1.3 for r, g, b in pixels) / n
             if cls == 'wall':
-                char = 'n' if fence_card(card) else ('T' if green > .25 else 'r')
+                if fence_card(card, 1 if green > .25 else None):
+                    char = 'n'      # thin object: a fence, hedge, post or bush
+                else:
+                    char = 'T' if green > .25 else 'r'
                 if mt >= self.pair.limits['metatiles'] and green < .25 and card.get('object'):
                     char = 'b'
             elif green > .35 and .02 < bright < .35:
@@ -140,7 +173,7 @@ class Classifier:
                 char = 'p'
             else:
                 char = '.'
-        self.memo[key] = char
+        self.base[key] = char
         return char
 
     def layout_uses(self):
@@ -321,6 +354,7 @@ class LetterRules(terrain.Rules):
         self.water_adj = {'sea': {}, 'pond': {}}     # water tile -> Counter of water tiles next to it, per kind of body
         self.ring_adj = {'sea': {}, 'pond': {}}      # water tile -> non-water tiles next to it, per kind
         self.tree_templates = Counter()
+        self.tile_context4 = {}                      # metatile -> {centre,N,E,S,W letter contexts vanilla puts it in}
         for name, _ in vanilla_outdoor(repo):
             grid, source_pair = load(repo, name)
             if source_pair.primary['symbol'] != pair.primary['symbol'] or source_pair.version != pair.version:
@@ -346,7 +380,9 @@ class LetterRules(terrain.Rules):
                     self.bits.setdefault(mt, Counter())[cell[1:]] += 1
                     self.letters.setdefault(char, Counter())[cell] += 1
                     self.context3.setdefault(letter_context(rows, x, y, connected=linked), Counter())[cell] += 1
-                    self.context4.setdefault(letter_context(rows, x, y, True, linked), Counter())[cell] += 1
+                    key4 = letter_context(rows, x, y, True, linked)
+                    self.context4.setdefault(key4, Counter())[cell] += 1
+                    self.tile_context4.setdefault(mt, set()).add(key4)
                     for dx, dy, table in ((1, 0, self.h), (0, 1, self.v), (1, -1, self.ne),
                                           (-1, -1, self.nw), (1, 1, self.se), (-1, 1, self.sw)):
                         if grid.inside(x + dx, y + dy):
@@ -385,15 +421,11 @@ class LetterRules(terrain.Rules):
         for body in connected_regions({(x, y) for y in range(grid.h) for x in range(grid.w)
                                        if rows[y][x] == 'T'}):
             xs, ys = [x for x, _ in body], [y for _, y in body]
-            x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
-            if len(body) > SMALL_TREE or len(body) != (x1 - x0 + 1) * (y1 - y0 + 1):
-                continue
-            if x0 == 0 or y0 == 0 or x1 == grid.w - 1 or y1 == grid.h - 1:
-                continue                      # cut by the map edge: not a whole tree
+            if len(body) > SMALL_TREE or min(xs) == 0 or min(ys) == 0 or max(xs) == grid.w - 1 or max(ys) == grid.h - 1:
+                continue                      # cut by the map edge: not a whole object
             if not all(usable(p) and cards_.get(grid.at(*p)[0], {}).get('cls') == 'wall' for p in body):
                 continue
-            self.tree_templates[tuple(tuple(grid.at(x, y) for x in range(x0, x1 + 1))
-                                      for y in range(y0, y1 + 1))] += 1
+            self.tree_templates[shape_template({p: grid.at(*p) for p in body})] += 1
 
     def learn_water_families(self):
         """Open water = tiles whose card family is 'open' (surrounded by their own class). Names are never
@@ -462,6 +494,16 @@ class ContextDomains(dict):
         super().__init__()
         self.rows, self.connected = rows, connected
         self.pair = rules.pair
+        # Edge, corner and mixed tiles are half-and-half (a grass/sand rim on one side). Letters cannot say
+        # which side, so such a tile is only placed where a vanilla 3x3 or 4-neighbour letter pattern
+        # matched; at letter / any-non-door widening only open tiles (tile card family open) are offered.
+        self.cards = getattr(getattr(rules, 'classify', None), 'cards', None)
+        self.rules, self.sockets, self.extra = rules, {}, {}   # extra: edge tiles a cell got only from the wider levels
+        self.unlocked = set()         # object cells with no tile of their letter otherwise: every tile of the letter
+        self.pinned = set()           # cells of a whole vanilla object pinned as one piece
+        self.tile_context4 = getattr(rules, 'tile_context4', None)
+        self.material = getattr(rules, 'material', None)
+        self.no_open = Counter()      # cells whose widened domain had no open tile at all
         self.bands, self.levels, self.cell_bits, self.history = {}, {}, {}, []
         self.conflicts = {}
         self.cache = {}
@@ -509,14 +551,99 @@ class ContextDomains(dict):
         self.levels[p] = level
         by_mt = {}
         walk = self.rows[p[1]][p[0]] in WALK
-        for cell, n in self.bands[p][level].items():
+
+        def take(cell, n):
             # A walkable letter never takes a blocking tile, at any widening level: one lawn cell
             # turned to rock in Route 22's fence gap cut the whole gate area off (reach lost 654).
             if walk and (cell[1] or self.blocking(cell)):
-                continue
+                return
             by_mt.setdefault(cell[0], Counter())[cell] += n
+        # Edge tiles stay in the domain only where this very cell matched a vanilla 3x3 or 4-neighbour
+        # pattern; widening to letter / any adds open tiles but never takes those away.
+        for lvl in ((level,) if level <= 1 else (0, 1)):
+            for cell, n in self.bands[p][lvl].items():
+                take(cell, n)
+        own = {cell[0] for lvl in (0, 1) for cell in self.bands[p][lvl]}
+        extra = set()
+        for cell, n in (self.bands[p][level].items() if level >= 2 else ()):
+            if p in self.unlocked and (self.material is None or self.material(cell) == self.rows[p[1]][p[0]]):
+                take(cell, n)
+                if not self.is_open(cell[0]) and cell[0] not in own:
+                    extra.add(cell[0])
+            elif self.is_open(cell[0]):
+                take(cell, n)
+            elif cell[0] in self.socket_tiles(p):
+                take(cell, n)
+                if cell[0] not in own:
+                    extra.add(cell[0])
+        letter = self.rows[p[1]][p[0]]
+        has_open = any(self.is_open(mt) and any(self.material is None or self.material(cell) == letter
+                                                   for cell in by_mt[mt]) for mt in by_mt)
+        if level >= 2 and self.cards is not None and not has_open:
+            # No open tile of this letter fits: keep what the wider level offers rather than leave the cell
+            # empty, and say so.
+            self.no_open[p] += 1
+            near = self.nearest(p, self.bands[p][level])
+            for cell, n in self.bands[p][level].items():
+                if cell[0] in near:
+                    take(cell, n)
+                    if cell[0] not in own:
+                        extra.add(cell[0])
+        self.extra[p] = extra
         self[p] = sorted(by_mt, key=lambda mt: (-sum(by_mt[mt].values()), mt))
-        self.cell_bits[p] = {mt: by_mt[mt].most_common(1)[0][0] for mt in self[p]}
+        def pick(mt):
+            # The tuple of a tile that fits this cell's letter (a tile is often walked on and blocked
+            # elsewhere): the any-non-door level pools every letter, so the commonest tuple may be another one.
+            for cell, _ in by_mt[mt].most_common():
+                if self.material is None or self.material(cell) == letter:
+                    return cell
+            return by_mt[mt].most_common(1)[0][0]
+        self.cell_bits[p] = {mt: pick(mt) for mt in self[p]}
+
+    def socket_tiles(self, p):
+        """Neighbours vanilla *requires* beside an object tile (a tree bottom wants one lawn tile below it) are
+        evidence of orientation too: for a cell next to an object cell, the tiles that constrained object side
+        accepts, whatever their tile card family. Empty for cells with no object neighbour."""
+        if p in self.sockets:
+            return self.sockets[p]
+        out = set()
+        raw = getattr(getattr(self.rules, 'classify', None), 'raw', None)
+        if raw:
+            for side, (dx, dy) in objects.SIDES.items():
+                q = p[0] + dx, p[1] + dy
+                if not (0 <= q[1] < len(self.rows) and 0 <= q[0] < len(self.rows[0])):
+                    continue
+                if self.rows[q[1]][q[0]] not in OBJECT_LETTERS and self.rows[q[1]][q[0]] not in LEDGE_STEP:
+                    continue
+                facing = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}[side]   # q sees p on the opposite side
+                for cell in self.rules.letters.get(self.rows[q[1]][q[0]], ()):
+                    rec = raw.get(cell[0])
+                    counts = Counter(rec['nmt'][facing]) if rec else None
+                    if counts and objects.constrained(counts) is not None:
+                        out |= set(counts)
+        self.sockets[p] = out
+        return out
+
+    def nearest(self, p, cells):
+        """Tiles of `cells` whose vanilla 4-neighbour contexts come closest to this cell's (fewest differing
+        neighbours, a connected side matches anything): when no open tile exists, take the edge whose rim is
+        most likely on the right side rather than any edge of the letter."""
+        seen = self.tile_context4
+        if not seen:
+            return {cell[0] for cell in cells}
+        key = letter_context(self.rows, p[0], p[1], True, self.connected)
+        score = {}
+        letter = self.rows[p[1]][p[0]]
+        mine = {cell[0] for cell in cells if self.material is None or self.material(cell) == letter}
+        for mt in mine or {cell[0] for cell in cells}:
+            best = min((sum(a != b and '*' not in (a, b) for a, b in zip(key, other)) for other in seen.get(mt, ())),
+                       default=5)
+            score[mt] = best
+        low = min(score.values())
+        return {mt for mt, d in score.items() if d == low}
+
+    def is_open(self, mt):
+        return self.cards is None or self.cards.get(mt, {}).get('family') == 'open'
 
     def blocking(self, cell):
         cls = physical_class(self.pair.behavior_name(cell[0]), cell[1])
@@ -536,6 +663,12 @@ class ContextDomains(dict):
         # A widened neighbour may revive previously pruned options elsewhere.
         for p, level in self.levels.items():
             self.activate(p, level)
+
+    def reshape(self):
+        """WARN rows for every cell that ended at letter / any widening: no vanilla edge fits its pattern."""
+        return [f'WARN BLOCKOUT reshape {x},{y} (no vanilla edge for this letter pattern)'
+                + (' [no open tile of its letter either]' if (x, y) in self.no_open else '')
+                for (x, y), level in sorted(self.levels.items(), key=lambda i: (i[0][1], i[0][0])) if level >= 2]
 
     def summary(self, label='context'):
         counts, per_letter, empty_patterns = Counter(), {}, Counter()
@@ -757,8 +890,36 @@ class HardObjects:
                 self.grid.set(*p, cell)
 
 
-def hard_solve(repo, grid, pair, rows, rules, choices, cell_bits, region=None,
-               preferred=None, letters=True, step_limit=30000, time_limit=8., free=frozenset()):
+SHORE_RELAX = {'on': False, 'cells': set()}
+PREFER_OPEN = {'extra': {}}
+
+
+def hard_solve(*args, **kwargs):
+    """`_hard_solve`, and while a tiling run allows it (`SHORE_RELAX`), a cell where the hard solve fails gets
+    its water/sand pair rule dropped and is retried: a beach cell with no vanilla shore tile for its pattern
+    (edge tiles are not offered beyond the 4-neighbour level) stays plain sand next to open water, and
+    WARN reshape names it, rather than one cell refusing a whole object region. Object rules are never relaxed."""
+    result = _hard_solve(*args, **kwargs)
+    if not SHORE_RELAX['on'] or result['ok']:
+        return result
+    region = args[7] if len(args) > 7 else kwargs.get('region')
+    added = set()
+    for _ in range(6):
+        new = {p for p in result.get('conflict', ()) if (region is None or p in region)
+               and p not in SHORE_RELAX['cells']}
+        if not new:
+            break
+        SHORE_RELAX['cells'] |= new
+        added |= new
+        result = _hard_solve(*args, **kwargs)
+        if result['ok']:
+            return result
+    SHORE_RELAX['cells'] -= added
+    return result
+
+
+def _hard_solve(repo, grid, pair, rows, rules, choices, cell_bits, region=None,
+                preferred=None, letters=True, step_limit=30000, time_limit=8., free=frozenset()):
     """Arc consistency + bounded iterative backtracking with exact hard sockets.
 
     Outside region is frozen. Both sides of every incident edge, including a
@@ -792,7 +953,9 @@ def hard_solve(repo, grid, pair, rows, rules, choices, cell_bits, region=None,
             return True
         if open_water is not None and ((lp == '~' and lq == 's' and a not in open_water) or
                                        (lq == '~' and lp == 's' and b not in open_water)):
-            return False
+            return False        # never relaxed: a pond rim does not sit on a beach
+        if (p in SHORE_RELAX['cells'] or q in SHORE_RELAX['cells']) and 's' in (lp, lq):
+            return True         # relaxed: no vanilla shore pair fits this cell (plain sand beside open water)
         if side == 'E':
             return (a, b) in bank_h
         if side == 'W':
@@ -823,8 +986,10 @@ def hard_solve(repo, grid, pair, rows, rules, choices, cell_bits, region=None,
 
     def order(p, values):
         freq = getattr(rules, 'freq', {})
+        wide = PREFER_OPEN['extra'].get(p, ())
         return sorted(values, key=lambda mt: (
             rules.material(cell_bits[p][mt]) != rows[p[1]][p[0]],
+            mt in wide,       # an edge tile only the wider levels offered comes last, after any open tile
             mt != preferred.get(p), -freq.get(mt, 0), mt))
 
     initial = [(p, q, side) for p in region for q, side in neighbours[p]]
@@ -1040,10 +1205,10 @@ def family_of(rules, kind):
 
 
 
-def widen_cell(choices, active, limits, p, reason):
+def widen_cell(choices, active, limits, p, reason, max_level=len(CONTEXT_LEVELS) - 1):
     """Widen one cell's context a single step (the usual ladder) and refresh its working domain, keeping
     any family restriction it carries. Returns the INFO row, or None when the cell cannot widen."""
-    if choices is None or choices.levels.get(p, len(CONTEXT_LEVELS) - 1) >= len(CONTEXT_LEVELS) - 1:
+    if choices is None or choices.levels.get(p, max_level) >= max_level:
         return None
     row = choices.widen(p, reason)
     fresh = list(choices[p])
@@ -1075,7 +1240,10 @@ def restrict_water(rules, rows, grid, active, choices=None, limits=None):
                 new = [mt for mt in active[p] if mt in tiles]
                 # No family tile fits this cell's context: widen the context one step at a time (the same
                 # ladder as everywhere else, printed per cell) rather than let another family in.
-                while not new and choices is not None and choices.levels.get(p, 3) < len(CONTEXT_LEVELS) - 1:
+                # A water cell whose context offers no open water of the family (only rim and deep-water edges)
+                # widens too: a rim has no place beside a beach, and the open tile is what vanilla puts there.
+                need = (lambda lst: not lst) if cells is ring else (lambda lst: opened not in lst)
+                while need(new) and choices is not None and choices.levels.get(p, 3) < len(CONTEXT_LEVELS) - 1:
                     notes.append(choices.widen(p, f'water region:{number} family 0x{opened:03X}'))
                     new = [mt for mt in choices[p] if mt in tiles]
                     widened += bool(new)
@@ -1112,12 +1280,19 @@ def water_report(rules, grid, families):
     return notes, bad
 
 
+def shape_template(cells):
+    """{(x, y): cell} -> a hashable template: ((dx, dy, cell), ...) in row-major order from the first cell."""
+    ordered = sorted(cells, key=lambda p: (p[1], p[0]))
+    x0, y0 = ordered[0]
+    return tuple((x - x0, y - y0, cells[x, y]) for x, y in ordered)
+
+
 def tree_covers(component, templates, limit=24):
-    """Exact covers of a small T region by whole vanilla trees (rectangles of wall tiles seen alone in
-    vanilla lawn, at least 2x2: a one-cell-wide rectangle is a post or a rock), most frequent first.
-    Each cover is {cell: tuple}."""
+    """Exact covers of a small T region by whole vanilla objects: groups of wall tiles that vanilla draws
+    alone in a lawn, whatever their shape (a 2x2 tree, a pair, an L), most frequent first. Each cover is
+    {cell: tuple}. A one-cell post is not an object: the classifier gives posts, stumps and hedges the n letter."""
     cells, found = set(component), []
-    ranked = [tpl for tpl, _ in templates.most_common() if len(tpl) >= 2 and len(tpl[0]) >= 2]
+    ranked = [tpl for tpl, _ in templates.most_common()]
 
     def place(done, cover):
         if len(found) >= limit:
@@ -1128,12 +1303,11 @@ def tree_covers(component, templates, limit=24):
             return
         x, y = rest[0]
         for tpl in ranked:
-            h, w = len(tpl), len(tpl[0])
-            spots = {(x + dx, y + dy) for dy in range(h) for dx in range(w)}
-            if spots <= cells and not spots & done:
+            spots = {(x + dx, y + dy): cell for dx, dy, cell in tpl}
+            if set(spots) <= cells and not set(spots) & done:
                 grown = dict(cover)
-                grown.update({(x + dx, y + dy): tpl[dy][dx] for dy in range(h) for dx in range(w)})
-                place(done | spots, grown)
+                grown.update(spots)
+                place(done | set(spots), grown)
     place(set(), {})
     return found
 
@@ -1177,14 +1351,17 @@ def small_tree_region(repo, grid, pair, rows, rules, forced, cell_bits, componen
         if hard['ok']:
             apply_candidates(grid, hard['assignment'], forced, cell_bits)
             if clean():
+                if getattr(domains, 'pinned', None) is not None:
+                    domains.pinned.update(cover)
                 tiles = ' '.join(f'0x{c[0]:03X}' for _, c in sorted(cover.items(), key=lambda i: (i[0][1], i[0][0])))
                 return notes + [f'INFO BLOCKOUT objects whole-tree {tag} template:{tiles} ring:{len(ring)} '
                                 f'steps:{steps} OBJECT:hard']
         restore()
     # No whole tree fits: leave lawn (the letter stays T in the file; the export reports the cells as lawn).
     by_mt = {}
+    cards_ = getattr(getattr(rules, 'classify', None), 'cards', None)
     for cell in rules.letters.get('.', Counter()):
-        if not cell[1]:
+        if not cell[1] and (cards_ is None or cards_.get(cell[0], {}).get('family') == 'open'):
             by_mt.setdefault(cell[0], cell)
     lawn = sorted(by_mt, key=lambda mt: (-rules.freq.get(mt, 0), mt))[:12]
     lawn_rows = Rows(''.join('.' if (x, y) in component else rows[y][x] for x in range(grid.w))
@@ -1226,6 +1403,29 @@ def object_regions(repo, grid, pair, rows, rules, choices, cell_bits, exclude=()
                               and rows[q[1]][q[0]] not in LEDGE_STEP}
         forced = {p: [mt for mt in choices[p] if rules.material(cell_bits[p][mt]) == rows[p[1]][p[0]]]
                   for p in region}
+        # A cell of the region (or its ring) with no tile of its letter in its context widens one step at a
+        # time, printed, before the region is given up (the seed's tile was kept before, and could be anything).
+        if domains is not None:
+            for p in sorted(region, key=lambda q: (q[1], q[0])):
+                while not forced[p]:
+                    row = widen_cell(domains, choices, limits, p, f'object region:{number} symbol:{symbol}')
+                    if row is None:
+                        if p not in domains.unlocked and rows[p[1]][p[0]] in OBJECT_LETTERS and domains.levels.get(p, 0) >= 2:
+                            # The structure itself needs this cell: offer every tile of its letter, edge tiles
+                            # included (the object rules still decide), and let WARN reshape name the cell.
+                            domains.unlocked.add(p)
+                            domains.activate(p, domains.levels[p])
+                            fresh = list(domains[p])
+                            choices[p] = [mt for mt in fresh if p not in (limits or {}) or mt in limits[p]] or fresh
+                            notes.append(f'INFO BLOCKOUT object region:{number} cell {p[0]},{p[1]} letter {rows[p[1]][p[0]]}: '
+                                         f'no open or required tile fits, every tile of the letter offered')
+                            forced[p] = [mt for mt in domains[p] if rules.material(cell_bits[p][mt]) == rows[p[1]][p[0]]]
+                            continue
+                        notes.append(f'INFO BLOCKOUT object region:{number} cell {p[0]},{p[1]} letter {rows[p[1]][p[0]]} '
+                                     f'has no tile of its letter at level {CONTEXT_LEVELS[domains.levels.get(p, 0)]}')
+                        break
+                    notes.append(row)
+                    forced[p] = [mt for mt in domains[p] if rules.material(cell_bits[p][mt]) == rows[p[1]][p[0]]]
         if symbol == 'T' and len(component) <= SMALL_TREE and hasattr(rules, 'tree_templates'):
             # Whole vanilla trees only; the seen-pair fallback used to fill such a group with any wall tile
             # that fit: fence posts and stumps in the middle of a lawn.
@@ -1271,6 +1471,24 @@ def object_regions(repo, grid, pair, rows, rules, choices, cell_bits, exclude=()
                                                for p in band}, passes=24, diag_weight=.5) if band else {}
             hard = hard_solve(repo, grid, pair, rows, rules, forced, cell_bits, band,
                               preferred=proposal, letters=True)
+            for _ in range(3):
+                # A cell where the structure itself cannot be solved (no open or required tile fits it) is offered
+                # every tile of its letter, edge tiles included; the object rules still decide, and the cell
+                # is named by WARN reshape / the edge check.
+                stuck = [p for p in hard.get('conflict', ()) if p in band and domains is not None
+                         and p not in domains.unlocked]
+                if hard['ok'] or not stuck:
+                    break
+                for p in stuck:
+                    domains.unlocked.add(p)
+                    domains.activate(p, max(domains.levels[p], 2))
+                    fresh = list(domains[p])
+                    choices[p] = [mt for mt in fresh if p not in (limits or {}) or mt in limits[p]] or fresh
+                    forced[p] = [mt for mt in domains[p] if rules.material(cell_bits[p][mt]) == rows[p[1]][p[0]]]
+                    notes.append(f'INFO BLOCKOUT object region:{number} cell {p[0]},{p[1]}: hard conflict, every '
+                                 f'tile of the letter offered')
+                hard = hard_solve(repo, grid, pair, rows, rules, forced, cell_bits, band,
+                                  preferred=proposal, letters=True)
             if hard['ok']:
                 # Interior is frozen during band solving; validate the combined
                 # result atomically, including interior/interior and border edges.
@@ -1285,7 +1503,8 @@ def object_regions(repo, grid, pair, rows, rules, choices, cell_bits, exclude=()
             else:
                 for p, cell in original.items():
                     grid.set(*p, cell)
-                notes.append(f'INFO BLOCKOUT {label} region:{number} refused:{hard["reason"]} '
+                where = (' at ' + ' '.join(f'{x},{y}' for x, y in hard.get('conflict', [])[:4])) if hard.get('conflict') else ''
+                notes.append(f'INFO BLOCKOUT {label} region:{number} refused:{hard["reason"]}{where} '
                              f'steps:{hard["steps"]} WFC-steps:{wfc_steps} '
                              'previous assignment retained; object rules never relaxed')
         except Exception:
@@ -1383,7 +1602,10 @@ def sectioned_solve(repo, grid, pair, rows, rules, domains, active, cell_bits, c
                 break
             # A cell whose context offers nothing that satisfies the hard rules (a map-edge sand cell with
             # only plain sand above open water) widens one step per round, printed, before the window splits.
-            rows_ = [widen_cell(choices, active, limits, p, f'{label} window {ax},{ay}: {result["reason"]}')
+            # Only up to the 4-neighbour level: from letter level on a cell is offered open tiles only, which
+            # cannot repair an object or an edge, so such a cell is reported (WARN reshape) instead.
+            rows_ = [widen_cell(choices, active, limits, p, f'{label} window {ax},{ay}: {result["reason"]}',
+                                CONTEXT_LEVELS.index('4-neighbour'))
                      for p in result.get('conflict', ()) if p in region]
             rows_ = [r for r in rows_ if r]
             if not rows_:
@@ -1391,7 +1613,7 @@ def sectioned_solve(repo, grid, pair, rows, rules, domains, active, cell_bits, c
             notes.extend(rows_)
             if domains is not active:
                 for p in result['conflict']:
-                    if p in active and p in domains and len(domains[p]) != 1:
+                    if p in active and p in domains:
                         domains[p] = active[p]
         if result['ok']:
             apply_candidates(grid, result['assignment'], active, cell_bits)
@@ -1415,8 +1637,16 @@ def sectioned_solve(repo, grid, pair, rows, rules, domains, active, cell_bits, c
         # vanilla context left after leave-one-out): soft solve by letter and vanilla pairs, then keep a
         # cell's new tile only if it breaks no object (object rules stay hard). Never leave wiped lawn
         # inside a beach or path, which blocks the way.
+        # A cell no hard window could solve is not decorated with edge tiles chosen one by one (a rim on the
+        # wrong side): it gets an open tile of its letter, and WARN reshape names it.
+        cards_ = getattr(getattr(rules, 'classify', None), 'cards', None)
+
+        def plain(p):
+            options = list(domains[p]) or [grid.at(*p)[0]]
+            opened = [mt for mt in options if cards_ is not None and cards_.get(mt, {}).get('family') == 'open']
+            return opened or options
         picked = terrain.solve(grid, rules, {p: rows[p[1]][p[0]] for p in left}, margin=0,
-                               choices={p: list(domains[p]) or [grid.at(*p)[0]] for p in left},
+                               choices={p: plain(p) for p in left},
                                seed={p: grid.at(*p)[0] for p in left}, passes=24, diag_weight=.5)
         glue = objects.Glue(repo, grid, pair)
         kept = 0
@@ -1438,10 +1668,66 @@ def sectioned_solve(repo, grid, pair, rows, rules, domains, active, cell_bits, c
     return solved, notes
 
 
-def tile(repo, grid, pair, rows, exclude=()):
-    """In-memory proposal + safety report. Caller stages only a safe proposal."""
+def edge_orientation(grid, rows, rules, connected, choices=None):
+    """Every placed non-open tile (tile card family not open: an edge, corner or half-and-half tile) must sit in
+    a 4-neighbour letter context (centre, N, E, S, W) that vanilla puts that tile in. Returns (checked, rows of
+    WARN lines for the mismatches). A tile whose rim is on the wrong side is exactly such a mismatch.
+    With `choices` each mismatch says why it could not be avoided: the letter has no open tile at all,
+    or an object beside it requires that tile (vanilla's own pairing), or neither (a real misplacement)."""
+    cards_ = rules.classify.cards
+    checked, bad = 0, []
+    for y in range(grid.h):
+        for x in range(grid.w):
+            if rows[y][x] == 'b':
+                continue
+            mt = grid.at(x, y)[0]
+            if cards_.get(mt, {}).get('family') == 'open':
+                continue
+            checked += 1
+            key = letter_context(rows, x, y, True, connected)
+            seen = rules.tile_context4.get(mt, ())
+            if not any(all(a == b or '*' in (a, b) for a, b in zip(key, other)) for other in seen):
+                why = ''
+                if choices is not None:
+                    if (x, y) in choices.no_open:
+                        why = ' [no open tile of its letter]'
+                    elif mt in choices.socket_tiles((x, y)):
+                        why = ' [required beside an object]'
+                    elif (x, y) in choices.unlocked:
+                        why = ' [object edge no pattern fits]'
+                    elif (x, y) in choices.pinned:
+                        why = ' [whole vanilla object]'
+                    else:
+                        why = ' [misplaced]'
+                bad.append(f'WARN BLOCKOUT edge context {x},{y} 0x{mt:03X} has no vanilla use in letter context '
+                           f'{key[0]}/{key[1]}{key[2]}{key[3]}{key[4]} (centre/NESW){why}')
+    return checked, bad
+
+
+def tile(repo, grid, pair, rows, exclude=(), baseline=None):
+    SHORE_RELAX['on'], SHORE_RELAX['cells'] = True, set()
+    PREFER_OPEN['extra'] = {}
+    try:
+        report = _tile(repo, grid, pair, rows, exclude, baseline)
+        relaxed = sorted(SHORE_RELAX['cells'], key=lambda p: (p[1], p[0]))
+        if isinstance(report, dict) and relaxed:
+            report['rows'].extend(f'WARN BLOCKOUT reshape {x},{y} (no vanilla shore for this water/sand pattern)'
+                                  for x, y in relaxed)
+            report['rows'].append(f'INFO BLOCKOUT shore pair rule relaxed at {len(relaxed)} cells (plain sand beside open water)')
+        return report
+    finally:
+        SHORE_RELAX['on'], SHORE_RELAX['cells'] = False, set()
+        PREFER_OPEN['extra'] = {}
+
+
+def _tile(repo, grid, pair, rows, exclude=(), baseline=None):
+    """In-memory proposal + safety report. Caller stages only a safe proposal.
+    New object warnings and lost reach are measured against `baseline` (a rebuild passes the original vanilla
+    map), by default against the grid as given."""
     before = copy(grid)
     before.cells = list(grid.cells)
+    if baseline is not None:
+        before = baseline
     if export(repo, grid, pair) == rows:
         return dict(safe=True, fidelity=1., added=0, losses={}, open_bank=0,
                     rows=['INFO BLOCKOUT unchanged: exact existing tiles retained',
@@ -1455,6 +1741,7 @@ def tile(repo, grid, pair, rows, exclude=()):
     linked = objects.connected_sides(grid.data)
     out.append(f'INFO BLOCKOUT context connected-sides:{",".join(sorted(linked)) or "none"} outside:wildcard')
     choices, cell_bits, notes = context_candidates(rows, rules, linked)
+    PREFER_OPEN['extra'] = choices.extra
     out.extend(notes)
     out.extend(resolve_contexts(repo, grid, pair, rows, choices, cell_bits))
     valid_context = all(choices.values())
@@ -1543,6 +1830,23 @@ def tile(repo, grid, pair, rows, exclude=()):
         f'{char}:{wanted[char] - lost_by[char] - lawned[char]}/{wanted[char]}' for char in sorted(wanted)) +
         f' survived; left as lawn:{len(left_as_lawn)}')
     out.extend(f'WARN BLOCKOUT object letter lost {x},{y} {a}->{b}' for x, y, a, b in lost[:8])
+    reshape = choices.reshape() if active else []
+    out.extend(reshape)
+    # The vanilla a tile's context is judged against is all of vanilla, the rebuilt map included: leave-one-out
+    # only limits what the solver may learn from, it does not make a tile used there wrong.
+    full = learned(repo, pair)
+    checked, edge_bad = edge_orientation(grid, rows, full, linked, choices)
+    why = Counter(r.rsplit('[', 1)[-1].rstrip(']') for r in edge_bad)
+    # An edge tile no open tile can replace (a ledge, a fence end, flowers have no open tile at all) or that an
+    # object beside it requires is reported but cannot be avoided; only a misplaced one makes the proposal unsafe.
+    misplaced = [r for r in edge_bad if r.endswith('[misplaced]')]
+    out.append(f'INFO BLOCKOUT edge orientation: non-open tiles checked:{checked} wrong-context:{len(edge_bad)} '
+               f'(no open tile of its letter:{why["no open tile of its letter"]} '
+               f'required beside an object:{why["required beside an object"]} '
+               f'object edge no pattern fits:{why["object edge no pattern fits"]} whole vanilla object:{why["whole vanilla object"]} '
+               f'misplaced:{why["misplaced"]}) '
+               f'reshape-cells:{len(reshape)}')
+    out.extend(edge_bad[:64])
     water_notes, water_bad = water_report(rules, grid, water_families)
     out.extend(water_notes)
     if water_bad:
@@ -1552,7 +1856,7 @@ def tile(repo, grid, pair, rows, exclude=()):
     # Open bank = a water cell next to lawn with a tile pair vanilla never uses there. Pond rims are
     # drawn inside surfable tiles, so plain "water letter next to lawn letter" fired 445 times on 36
     # vanilla maps; the vanilla-pair rule is 0 on vanilla by construction (same as SEAM).
-    full = learned(repo, pair)       # all vanilla outdoor layouts + portable primary pairs (the solver's source)
+    # `full` (above): all vanilla outdoor layouts + portable primary pairs
     def unseen_contact(x, y, nx, ny):
         a, b = grid.at(x, y)[0], grid.at(nx, ny)[0]
         if nx != x:
@@ -1571,7 +1875,7 @@ def tile(repo, grid, pair, rows, exclude=()):
         out.append(f'WARN BLOCKOUT bank open-water/lawn:{len(open_bank)} first:{open_bank[0]}')
     out.append(f'INFO BLOCKOUT fidelity {matched}/{grid.w * grid.h} = {fidelity:.2%}')
     safe = (valid_context and not added and not losses and not open_bank and fidelity >= .95
-            and not lost and not water_bad)
+            and not lost and not water_bad and not misplaced)
     return dict(safe=safe, fidelity=fidelity, added=len(added), losses=losses,
                 open_bank=len(open_bank), rows=out)
 
