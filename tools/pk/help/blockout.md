@@ -1,16 +1,30 @@
 Experimental Part 1 prototype; not accepted. See tasks/gpt_layout_blockout.md.
-Acceptance STOP: OneIsland_KindleRoad_Frlg contains west-facing ledge 0x085,
-which the required fixed l=ledge_s legend cannot faithfully represent. Four
-unchanged vanilla round trips passed before this error; the ten-map target fails.
-No wiped retiles, coastal render, library or new measures were run after the miss.
-The global vanilla-pattern preflight is also blocked by this representability gap.
+Owner-approved directional legend: v south, ^ north, < west, > east, matching
+pk map show's ledge symbols. The old ambiguous l is invalid, not an alias.
+Additional genuinely unrepresented physical/card classes may receive one symbol
+per class, documented here and in the serialized legend; names never define them.
+Resumed acceptance: python tools/pk/tests/test_blockout.py --benchmark.
+Round trips PASS: all 10 maps, 13812/13812 letters, original tuples retained.
+First wiped retile (Route1) FAIL: 712/960 = 74.17%, 20 new OBJECT rows,
+no reach loss compared with original vanilla. Target remains >=95%, 0 new OBJECT.
+STOP: remaining retiles, coastal map and Parts 2-3 (including v3 table) skipped.
+Render: .pk/render/blockout_Route1_Frlg.png (original left, rejected proposal right).
+13 unit tests pass: python tools/pk/tests/test_blockout.py.
+Current weaknesses: 246 object cells were unfit and stayed lawn; independent
+material selection can choose visually wrong walkable tiles and incomplete ledges.
+Proposal diagnostics compare reach against the walkable wipe; acceptance separately
+compares against original vanilla. Only the latter is the retile reach target.
 pk map blockout MAP --export [--out .pk/NAME.blockout]
 pk map blockout MAP FILE --check (read-only, no cache or render writes)
 pk map blockout PkBlockNAME_Frlg FILE [--dry-run]
 Format: blockout 1, then exactly this legend, then exactly the map's rows:
-legend T=trees .=lawn p=path g=tallgrass ~=water s=sand r=rock l=ledge_s f=flowers b=building
-Unknown letters, changed legend and wrong dimensions are errors. Non-south ledges
-are unrepresentable and refused, not silently re-labelled. Existing b cells only.
+legend T=trees .=lawn p=path g=tallgrass ~=water s=sand r=rock v=ledge_s ^=ledge_n <=ledge_w >=ledge_e f=flowers b=building
+Unknown letters, changed legend and wrong dimensions are errors. All ledge letters
+preserve physical jump direction for export, candidates and connectivity checks.
+Legend entries are split at the LAST =, so <=ledge_w and >=ledge_e each have a
+one-character symbol. Existing b cells only. Fences already have physical wall
+class (T/r visual split); stairs are physical door; puddles and currents already
+have physical surf/water where game behavior and collision classify them so.
 Export uses game physical classes, tile cards and a provisional rendered-palette
 heuristic for visual categories. It never uses metatile names/tags. Inspect exports:
 the colour heuristic is NOT a validated tree/building/road/flower recognizer.

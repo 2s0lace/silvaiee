@@ -19,9 +19,11 @@ from .meta import draw
 from .reach import World, STATES
 
 HEADER = 'blockout 1'
-LEGEND = 'legend T=trees .=lawn p=path g=tallgrass ~=water s=sand r=rock l=ledge_s f=flowers b=building'
-LETTERS = frozenset('T.pg~srlfb')
+LEGEND = 'legend T=trees .=lawn p=path g=tallgrass ~=water s=sand r=rock v=ledge_s ^=ledge_n <=ledge_w >=ledge_e f=flowers b=building'
+LETTERS = frozenset('T.pg~srv^<>fb')
 WALK = frozenset('.pgsf')
+LEDGE_SYMBOL = {'ledge_s': 'v', 'ledge_n': '^', 'ledge_w': '<', 'ledge_e': '>'}
+LEDGE_STEP = {'v': (0, 1), '^': (0, -1), '<': (-1, 0), '>': (1, 0)}
 
 
 def parse(text, w, h):
@@ -67,9 +69,9 @@ class Classifier:
         elif cls == 'grass_enc':
             char = 'g'
         elif cls.startswith('ledge_'):
-            if cls != 'ledge_s':
-                raise PkError('PARSE', f'fixed legend cannot represent {cls} at metatile 0x{mt:03X}')
-            char = 'l'
+            if cls not in LEDGE_SYMBOL:
+                raise PkError('PARSE', f'legend cannot represent physical class {cls} at metatile 0x{mt:03X}')
+            char = LEDGE_SYMBOL[cls]
         elif cls == 'door':
             char = 'b'
         elif 'SAND' in behavior and not coll:
@@ -147,17 +149,18 @@ def connectivity(grid, pair, rows):
     walk = {(x, y) for y, row in enumerate(rows) for x, char in enumerate(row) if char in WALK}
     walk |= {p for p in doors if rows[p[1]][p[0]] == 'b'}
     # Ledges have directed entry/exit, rather than pretending they are lawn.
-    ledges = {(x, y) for y, row in enumerate(rows) for x, char in enumerate(row) if char == 'l'}
+    ledges = {(x, y): LEDGE_STEP[char] for y, row in enumerate(rows)
+              for x, char in enumerate(row) if char in LEDGE_STEP}
     start = min(targets, key=lambda p: (p[1], p[0]))
     seen, todo = ({start}, [start]) if start in walk else (set(), [])
     while todo:
         x, y = todo.pop()
-        directions = ((0, 1),) if (x, y) in ledges else ((0, 1), (0, -1), (1, 0), (-1, 0))
+        directions = (ledges[x, y],) if (x, y) in ledges else ((0, 1), (0, -1), (1, 0), (-1, 0))
         for dx, dy in directions:
             p = x + dx, y + dy
             if p in seen or not grid.inside(*p):
                 continue
-            if p in walk or (p in ledges and (dx, dy) == (0, 1)):
+            if p in walk or (p in ledges and (dx, dy) == ledges[p]):
                 seen.add(p)
                 todo.append(p)
     missing = sorted(targets - seen, key=lambda p: (p[1], p[0]))
@@ -173,7 +176,8 @@ class LetterPair:
         return {}
 
     def behavior_name(self, mt):
-        return {'~': 'POND_WATER', 'g': 'TALL_GRASS', 's': 'SAND', 'l': 'JUMP_SOUTH',
+        return {'~': 'POND_WATER', 'g': 'TALL_GRASS', 's': 'SAND', 'v': 'JUMP_SOUTH',
+                '^': 'JUMP_NORTH', '<': 'JUMP_WEST', '>': 'JUMP_EAST',
                 'b': 'DOOR'}.get(chr(mt), 'NORMAL')
 
 
@@ -304,7 +308,7 @@ def tile(repo, grid, pair, rows):
     for p in wanted.keys() - fixed:
         grid.set(*p, lawn)
     # Bulk materials, then paths, then objects, then encounter grass/ledges/flowers.
-    for chars in ('~s', 'p', 'glf'):
+    for chars in ('~s', 'p', 'gv^<>f'):
         targets = {p: char for p, char in wanted.items() if char in chars and p not in fixed}
         missing = sorted(set(targets.values()) - rules.by_mat.keys())
         for char in missing:

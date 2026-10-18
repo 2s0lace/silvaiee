@@ -1179,3 +1179,23 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   encounter this legend gap. No game-map writes, ROM build, blueprint apply or push.
 - Part 1 remains WIP. Owner direction is needed on faithful representation of non-south ledges;
   even resolving that does not establish classifier/tiler quality or any other acceptance target.
+
+## Blockout directional legend approved; stopped on Route 1 retile (2026-10-18, Codex)
+- Owner authorized v=ledge_s, ^=ledge_n, <=ledge_w, >=ledge_e; l is rejected, not an alias.
+  Export, letter terrain candidates, composition adapter and directed connectivity retain direction.
+  No new class symbols were needed in the ten-map cohort. Additional class symbols must come from
+  physical/card classes, never names, and be documented in the serialized legend and help/blockout.
+- Verified physical_class at lint.py:32 and existing display directions at layers.py:11-12.
+  Command: python tools/pk/tests/test_blockout.py -> 13 tests pass, including old-l refusal,
+  all direction adapters and Kindle Road west ledge 0x085. Same acceptance cohort, resumed with Kindle.
+- Command: python tools/pk/tests/test_blockout.py --benchmark -> roundtrip maps:10,
+  cells:13812/13812, fidelity:100.00%, exact original tuples retained on every map: PASS.
+- First wiped retile Route1_Frlg: 712/960 = 74.17% fidelity (<95%), 20 new OBJECT rows (>0),
+  reach_lost:0 compared with original vanilla, open_bank:0. FAIL; thresholds unchanged, STOP.
+  246 requested object cells did not fit whole small vanilla windows and stayed lawn. Render also
+  exposes the provisional palette/material classifier's inappropriate walkable/fence-like choices.
+- The proposal's WARN reach rows use the walkable wiped grid as baseline (54 cells lost per reported
+  entrance/state); acceptance uses the original vanilla grid and loses none. Do not confuse these.
+- Render: .pk/render/blockout_Route1_Frlg.png, original left / rejected proposal right. Only that PNG
+  was journaled; no game-map data changed. INFO skipped: remaining four wiped maps, coastal map,
+  Part 2 library, Part 3 measures/calibration and v3 table. Part 1 remains unaccepted WIP.

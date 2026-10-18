@@ -25,8 +25,19 @@ if not (ROOT / 'data/maps/Route1_Frlg').is_dir():
 
 class Format(unittest.TestCase):
     def test_roundtrip_and_fixed_alphabet(self):
-        rows = ['T.pg~', 'srlfb']
-        self.assertEqual(blockout.parse(blockout.serialize(rows), 5, 2), rows)
+        rows = ['T.pg~', 'srvfb', '^<>..']
+        self.assertEqual(blockout.parse(blockout.serialize(rows), 5, 3), rows)
+
+    def test_ambiguous_old_l_is_rejected(self):
+        with self.assertRaisesRegex(PkError, "unknown blockout letter 'l'"):
+            blockout.parse(blockout.serialize(['l']), 1, 1)
+
+    def test_directional_adapter(self):
+        from pk.maps.lint import physical_class
+        pair = blockout.LetterPair()
+        for cls, symbol in blockout.LEDGE_SYMBOL.items():
+            with self.subTest(cls=cls):
+                self.assertEqual(physical_class(pair.behavior_name(ord(symbol)), 1), cls)
 
     def test_unknown_with_coordinate(self):
         with self.assertRaisesRegex(PkError, '1,0'):
@@ -56,6 +67,14 @@ class Maps(unittest.TestCase):
         _, pair = load(self.repo, 'PalletTown_Frlg')
         classify = blockout.classifier(self.repo, pair)
         self.assertNotEqual(classify.letter((0x045, 0, 3)), '~')
+
+    def test_kindle_west_ledge_is_not_south(self):
+        grid, pair = load(self.repo, 'OneIsland_KindleRoad_Frlg')
+        classify = blockout.classifier(self.repo, pair)
+        self.assertEqual(classify.letter((0x085, 1, 3)), '<')
+        rows = blockout.export(self.repo, grid, pair)
+        self.assertIn('<', ''.join(rows))
+        self.assertNotIn('l', ''.join(rows))
 
     def test_export_ignores_named_metadata(self):
         grid, pair = load(self.repo, 'Route1_Frlg')
@@ -104,10 +123,17 @@ def benchmark():
     choices = ['Route1_Frlg', 'Route22_Frlg', 'PalletTown_Frlg', 'Route3_Frlg', 'OneIsland_KindleRoad_Frlg']
     choices += [name for name, _ in vanilla_outdoor(repo) if name not in choices][:5]
     matched = total = 0
-    for name in choices:
+    # Resume the previously blocked Kindle Road first, then finish this same
+    # ten-map cohort; earlier four are revalidated against the extended legend.
+    for name in choices[4:] + choices[:4]:
         grid, pair = load(repo, name)
         original = list(grid.cells)
-        rows = blockout.parse(blockout.serialize(blockout.export(repo, grid, pair)), grid.w, grid.h)
+        try:
+            rows = blockout.parse(blockout.serialize(blockout.export(repo, grid, pair)), grid.w, grid.h)
+        except PkError as exc:
+            print(f'roundtrip {name} FAIL {exc.code}: {exc}', flush=True)
+            print('STOP roundtrip target missed; INFO retiles/coastal/Parts 2-3 skipped', flush=True)
+            return 1
         report = blockout.tile(repo, grid, pair, rows)
         actual = blockout.export(repo, grid, pair)
         count = sum(a == b for arow, brow in zip(rows, actual) for a, b in zip(arow, brow))
