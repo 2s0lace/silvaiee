@@ -124,12 +124,20 @@ def pattern(rows, x, y):
     return ''.join(rows[ny][nx] for ny in range(y - 1, y + 2) for nx in range(x - 1, x + 2))
 
 
-def letter_context(rows, x, y, cardinal=False):
-    """3x3 or centre,N,E,S,W. '_' is outside the map, never a file letter."""
+def letter_context(rows, x, y, cardinal=False, connected=frozenset()):
+    """3x3 or centre,N,E,S,W. Connected outside is '*', closed outside '_'."""
     offsets = ((0, 0), (0, -1), (1, 0), (0, 1), (-1, 0)) if cardinal else (
         (dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1))
-    return ''.join(rows[y + dy][x + dx] if 0 <= y + dy < len(rows)
-                   and 0 <= x + dx < len(rows[0]) else '_' for dx, dy in offsets)
+    out = []
+    for dx, dy in offsets:
+        nx, ny = x + dx, y + dy
+        if 0 <= ny < len(rows) and 0 <= nx < len(rows[0]):
+            out.append(rows[ny][nx])
+        else:
+            crossed = {side for side, yes in (('N', ny < 0), ('S', ny >= len(rows)),
+                       ('W', nx < 0), ('E', nx >= len(rows[0]))) if yes}
+            out.append('*' if crossed & connected else '_')
+    return ''.join(out)
 
 
 def vocabulary(repo):
@@ -230,6 +238,7 @@ class LetterRules(terrain.Rules):
             own = source_pair.secondary['symbol'] == pair.secondary['symbol']
             limit = pair.limits['metatiles']
             rows = export(repo, grid, source_pair)
+            linked = objects.connected_sides(grid.data)
             self.sources.append(grid)
             for y in range(grid.h):
                 for x in range(grid.w):
@@ -246,8 +255,8 @@ class LetterRules(terrain.Rules):
                     self.by_mat.setdefault(char, set()).add(mt)
                     self.bits.setdefault(mt, Counter())[cell[1:]] += 1
                     self.letters.setdefault(char, Counter())[cell] += 1
-                    self.context3.setdefault(letter_context(rows, x, y), Counter())[cell] += 1
-                    self.context4.setdefault(letter_context(rows, x, y, True), Counter())[cell] += 1
+                    self.context3.setdefault(letter_context(rows, x, y, connected=linked), Counter())[cell] += 1
+                    self.context4.setdefault(letter_context(rows, x, y, True, linked), Counter())[cell] += 1
                     for dx, dy, table in ((1, 0, self.h), (0, 1, self.v), (1, -1, self.ne),
                                           (-1, -1, self.nw), (1, 1, self.se), (-1, 1, self.sw)):
                         if grid.inside(x + dx, y + dy):
@@ -302,49 +311,144 @@ def learned(repo, pair, exclude=()):
     return cache[key]
 
 
-def context_candidates(rows, rules):
-    """Exact 3x3 -> centre+cardinals -> letter; never an unreported empty."""
-    choices, cells, counts, per_letter, empty_patterns = {}, {}, Counter(), {}, Counter()
-    for y, row in enumerate(rows):
-        for x, char in enumerate(row):
-            if char == 'b':
-                continue
-            key3, key4 = letter_context(rows, x, y), letter_context(rows, x, y, True)
-            found, level = rules.context3.get(key3), '3x3'
-            if not found:
-                found, level = rules.context4.get(key4), '4-neighbour'
-            if not found:
-                found, level = rules.letters.get(char), 'letter'
-            if not found:
-                found, level = {}, 'empty'
-                empty_patterns[key3] += 1
-            counts[level] += 1
-            per_letter.setdefault(char, Counter())[level] += 1
-            by_mt = {}
-            for cell, n in found.items():
-                by_mt.setdefault(cell[0], Counter())[cell] += n
-            order = sorted(by_mt, key=lambda mt: (-sum(by_mt[mt].values()), mt))
-            choices[x, y] = order
-            cells[x, y] = {mt: by_mt[mt].most_common(1)[0][0] for mt in order}
-    notes = ['INFO BLOCKOUT context ' + ' '.join(f'{level}:{counts[level]}'
-             for level in ('3x3', '4-neighbour', 'letter', 'empty'))]
-    for char, counter in sorted(per_letter.items()):
-        notes.append(f'INFO BLOCKOUT context letter:{char} ' + ' '.join(
-            f'{level}:{counter[level]}' for level in ('3x3', '4-neighbour', 'letter', 'empty')))
-    for key, n in sorted(empty_patterns.items()):
-        notes.append(f'INFO BLOCKOUT context EMPTY pattern:{key[:3]}/{key[3:6]}/{key[6:]} cells:{n}')
-    return choices, cells, notes
+CONTEXT_LEVELS = ('3x3', '4-neighbour', 'letter', 'any-non-door')
 
 
-def supported_contexts(repo, grid, pair, rows, choices, cell_bits):
-    """Prune only impossible object sockets; never widen a context domain.
+class ContextDomains(dict):
+    """Domains plus the finite, coordinate-audited widening ladder."""
+    def __init__(self, rows, rules, connected):
+        super().__init__()
+        self.rows, self.connected = rows, connected
+        self.bands, self.levels, self.cell_bits, self.history = {}, {}, {}, []
+        self.cache = {}
+        self.tables = (rules.context3, rules.context4)
+        self.index = []
+        for i, table in enumerate(self.tables):
+            groups = {}
+            for key, values in table.items():
+                groups.setdefault(key[4 if i == 0 else 0], []).append((key, values))
+            self.index.append(groups)
+        non_door = Counter()
+        for values in rules.letters.values():
+            for cell, n in values.items():
+                if physical_class(rules.pair.behavior_name(cell[0]), cell[1]) != 'door':
+                    non_door[cell] += n
+        for y, row in enumerate(rows):
+            for x, char in enumerate(row):
+                if char == 'b':
+                    continue
+                p = x, y
+                key3 = letter_context(rows, x, y, connected=connected)
+                key4 = letter_context(rows, x, y, True, connected)
+                self.bands[p] = (self.lookup(0, key3), self.lookup(1, key4),
+                                 rules.letters.get(char, Counter()), non_door)
+                self.activate(p, 0)
+                while not self[p] and self.levels[p] < len(CONTEXT_LEVELS) - 1:
+                    self.widen(p, 'no candidates at current context level')
+
+    def lookup(self, level, key):
+        cache_key = level, key
+        if cache_key not in self.cache:
+            found = Counter()
+            center = key[4 if level == 0 else 0]
+            if '*' not in key:
+                found.update(self.tables[level].get(key, {}))
+            for source, values in self.index[level].get(center, ()):
+                if '*' not in key and '*' not in source:
+                    continue
+                if all(a == b or a == '*' or b == '*' for a, b in zip(key, source)):
+                    found.update(values)
+            self.cache[cache_key] = found
+        return self.cache[cache_key]
+
+    def activate(self, p, level):
+        self.levels[p] = level
+        by_mt = {}
+        for cell, n in self.bands[p][level].items():
+            by_mt.setdefault(cell[0], Counter())[cell] += n
+        self[p] = sorted(by_mt, key=lambda mt: (-sum(by_mt[mt].values()), mt))
+        self.cell_bits[p] = {mt: by_mt[mt].most_common(1)[0][0] for mt in self[p]}
+
+    def widen(self, p, reason):
+        level = self.levels[p]
+        if level == len(CONTEXT_LEVELS) - 1:
+            return None
+        self.activate(p, level + 1)
+        row = (f'INFO BLOCKOUT widen {p[0]},{p[1]} {CONTEXT_LEVELS[level]}->{CONTEXT_LEVELS[level + 1]} '
+               f'candidates:{len(self[p])} reason:{reason}')
+        self.history.append(row)
+        return row
+
+    def restore(self):
+        # A widened neighbour may revive previously pruned options elsewhere.
+        for p, level in self.levels.items():
+            self.activate(p, level)
+
+    def summary(self, label='context'):
+        counts, per_letter, empty_patterns = Counter(), {}, Counter()
+        for p, level in self.levels.items():
+            name = CONTEXT_LEVELS[level] if self[p] else 'empty'
+            counts[name] += 1
+            per_letter.setdefault(self.rows[p[1]][p[0]], Counter())[name] += 1
+            if not self[p]:
+                empty_patterns[letter_context(self.rows, *p, connected=self.connected)] += 1
+        names = (*CONTEXT_LEVELS, 'empty')
+        notes = [f'INFO BLOCKOUT {label} ' + ' '.join(f'{name}:{counts[name]}' for name in names)]
+        for char, counter in sorted(per_letter.items()):
+            notes.append(f'INFO BLOCKOUT {label} letter:{char} ' +
+                         ' '.join(f'{name}:{counter[name]}' for name in names))
+        for key, n in sorted(empty_patterns.items()):
+            notes.append(f'INFO BLOCKOUT context EMPTY pattern:{key[:3]}/{key[3:6]}/{key[6:]} cells:{n}')
+        return notes
+
+
+def context_candidates(rows, rules, connected=frozenset()):
+    choices = ContextDomains(rows, rules, connected)
+    return choices, choices.cell_bits, choices.summary() + choices.history
+
+
+def resolve_contexts(repo, grid, pair, rows, choices, cell_bits):
+    """Widen only exhausted cells, one level per retry; always attempt the rest."""
+    notes, exhausted = [], set()
+    while True:
+        choices.restore()
+        notes.extend(supported_contexts(repo, grid, pair, rows, choices, cell_bits, exhausted))
+        empty = sorted((p for p in choices if not choices[p]), key=lambda p: (p[1], p[0]))
+        if not empty:
+            break
+        progress = False
+        for p in empty:
+            row = choices.widen(p, 'object/border support emptied domain')
+            if row:
+                notes.append(row)
+                progress = True
+            elif p not in exhausted:
+                exhausted.add(p)
+                progress = True
+                notes.append(f'INFO BLOCKOUT widen-exhausted {p[0]},{p[1]} any-non-door: '
+                             'attempt broad domain and solve rest; final OBJECT guard unchanged')
+        if not progress:
+            break
+    for p in exhausted:
+        if not choices[p]:
+            choices.activate(p, len(CONTEXT_LEVELS) - 1)
+        if not choices[p]:
+            notes.append(f'INFO BLOCKOUT unresolved {p[0]},{p[1]} no learned non-door tiles; solve rest')
+    widened = {p for p in choices if choices.levels[p] > 0}
+    notes.append(f'INFO BLOCKOUT widen totals cells:{len(widened)} steps:{len(choices.history)}')
+    notes.extend(choices.summary('context-final'))
+    return notes
+
+
+def supported_contexts(repo, grid, pair, rows, choices, cell_bits, exhausted=frozenset()):
+    """Prune one current level; the caller widens exhausted cells, never the guard.
 
     Glue checks literal map edges. Its already-defined constrained-side criterion
     supplies arc support between variable neighbours, so lawn can change instead
     of being tested against a frozen, modal lawn tile. Final OBJECT guard remains.
     """
     fixed = {(x, y) for y, row in enumerate(rows) for x, c in enumerate(row) if c == 'b'}
-    domains = {p: set(values) for p, values in choices.items()}
+    domains = {p: set(values) for p, values in choices.items() if values or p not in exhausted}
     bits = dict(cell_bits)
     for p in fixed:
         cell = grid.at(*p)
@@ -371,15 +475,18 @@ def supported_contexts(repo, grid, pair, rows, choices, cell_bits):
 
     initial = sum(len(d) for d in domains.values())
     for p, values in domains.items():
-        if p in fixed:
+        if p in fixed or p in exhausted:
             continue
         x, y = p
         for side, (dx, dy) in objects.SIDES.items():
             if not grid.inside(x + dx, y + dy):
+                if glue.neighbour(x, y, side) is None:
+                    continue  # same connected-side/no-border rule as lint
                 domains[p] = {mt for mt in domains[p]
                               if glue.broken_side(x, y, side, bits[p][mt]) is None}
-    queue = deque((p, side) for p in choices for side, (dx, dy) in objects.SIDES.items()
-                  if (p[0] + dx, p[1] + dy) in domains) if all(domains[p] for p in choices) else deque()
+    queue = deque((p, side) for p in choices if p not in exhausted
+                  for side, (dx, dy) in objects.SIDES.items()
+                  if (p[0] + dx, p[1] + dy) in domains) if all(domains[p] for p in domains) else deque()
     while queue:
         p, side = queue.popleft()
         dx, dy = objects.SIDES[side]
@@ -391,15 +498,16 @@ def supported_contexts(repo, grid, pair, rows, choices, cell_bits):
                 break  # report the contradiction's origin, not a cascade of empty domains
             for incoming, (ox, oy) in objects.SIDES.items():
                 neighbour = p[0] + ox, p[1] + oy
-                if neighbour in choices and neighbour != q:
+                if neighbour in choices and neighbour not in exhausted and neighbour != q:
                     queue.append((neighbour, reverse[incoming]))
-    empty = Counter(letter_context(rows, *p) for p in choices if not domains[p])
+    linked = objects.connected_sides(getattr(grid, 'data', None))
+    empty = Counter(letter_context(rows, *p, connected=linked) for p in choices if not domains.get(p))
     notes = [f'INFO BLOCKOUT context object-support removed:{initial - sum(len(d) for d in domains.values())} '
-             f'empty-cells:{sum(empty.values())} (no domain expansion)']
+             f'empty-cells:{sum(empty.values())} (current level only)']
     for key, n in sorted(empty.items()):
         notes.append(f'INFO BLOCKOUT context UNSUPPORTED pattern:{key[:3]}/{key[3:6]}/{key[6:]} cells:{n}')
     for p in choices:
-        choices[p] = [mt for mt in choices[p] if mt in domains[p]]
+        choices[p] = [mt for mt in choices[p] if mt in domains.get(p, ())]
     return notes
 
 
@@ -467,32 +575,33 @@ def tile(repo, grid, pair, rows, exclude=()):
     out = [f'INFO BLOCKOUT context references maps:{len(rules.sources)} portable-cells:{rules.portable_cells} '
            f'incompatible-class-cells:{rules.class_mismatches} exclude:{",".join(exclude) or "none"}',
            'INFO BLOCKOUT shape/path material brushes replaced by context-restricted full-map solve']
-    choices, cell_bits, notes = context_candidates(rows, rules)
+    linked = objects.connected_sides(grid.data)
+    out.append(f'INFO BLOCKOUT context connected-sides:{",".join(sorted(linked)) or "none"} outside:wildcard')
+    choices, cell_bits, notes = context_candidates(rows, rules, linked)
     out.extend(notes)
+    out.extend(resolve_contexts(repo, grid, pair, rows, choices, cell_bits))
     valid_context = all(choices.values())
-    if valid_context:
-        out.extend(supported_contexts(repo, grid, pair, rows, choices, cell_bits))
-        valid_context = all(choices.values())
-    if valid_context:
+    active = {p: values for p, values in choices.items() if values}
+    if active:
         # Only b cells are initially fixed. Every other cell, including lawn and
         # cells under events, receives a legal context seed and participates.
         seed = {p: grid.at(*p)[0] if grid.at(*p)[0] in values else values[0]
-                for p, values in choices.items()}
-        apply_candidates(grid, seed, choices, cell_bits)
-        out.append(f'INFO BLOCKOUT solve editable:{len(choices)} '
+                for p, values in active.items()}
+        apply_candidates(grid, seed, active, cell_bits)
+        out.append(f'INFO BLOCKOUT solve editable:{len(active)} '
                    f'frozen-b:{grid.w * grid.h - len(choices)} (no modal-lawn or event freeze)')
-        out.extend(forest(repo, grid, pair, rows, rules, choices, cell_bits, exclude))
-        rest = {p: rows[p[1]][p[0]] for p in choices if rows[p[1]][p[0]] != 'T'}
+        out.extend(forest(repo, grid, pair, rows, rules, active, cell_bits, exclude))
+        rest = {p: rows[p[1]][p[0]] for p in active if rows[p[1]][p[0]] != 'T'}
         if rest:
             picked = terrain.solve(grid, rules, rest, margin=0,
-                                   choices={p: choices[p] for p in rest},
+                                   choices={p: active[p] for p in rest},
                                    seed={p: grid.at(*p)[0] for p in rest}, passes=24, diag_weight=.5)
-            apply_candidates(grid, picked, choices, cell_bits)
+            apply_candidates(grid, picked, active, cell_bits)
             out.append(f'INFO BLOCKOUT rest solved:{len(rest)} (including lawn/forest joins)')
         else:
             out.append('INFO BLOCKOUT rest skipped: no non-tree editable cells')
     else:
-        out.append('INFO BLOCKOUT tiling refused: empty context/support domains; forest/rest skipped')
+        out.append('INFO BLOCKOUT forest/rest skipped: no non-door candidates for any editable cell')
     out.append('INFO BLOCKOUT unrestricted terrain auto skipped: joins already solved in context domains')
     actual = export(repo, grid, pair)
     matched = sum(a == b for row, other in zip(rows, actual) for a, b in zip(row, other))

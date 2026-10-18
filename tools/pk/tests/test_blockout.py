@@ -128,11 +128,23 @@ class Maps(unittest.TestCase):
         self.assertFalse(any(d['layout'] == held_out.layout['id'] for d in ref.maps().values()))
         self.assertFalse(any(name.startswith('Pk') for name in ref.maps()))
 
+    def test_route1_connected_north_matches_lint(self):
+        grid, pair = load(self.repo, 'Route1_Frlg')
+        linked = blockout.objects.connected_sides(grid.data)
+        self.assertIn('N', linked)
+        glue = blockout.objects.Glue(self.repo, grid, pair)
+        self.assertIsNone(glue.neighbour(9, 0, 'N'))
+        rows = blockout.export(self.repo, grid, pair)
+        self.assertEqual(blockout.letter_context(rows, 9, 0, connected=linked)[:3], '***')
+        border = blockout.objects.border_reader(self.repo, grid.layout)
+        self.assertEqual(glue.neighbour(0, 0, 'W'), (border(-1, 0), True))
+
 
 class Context(unittest.TestCase):
     def rules(self):
         return SimpleNamespace(context3={}, context4={}, letters={'.': Counter({(8, 0, 3): 1}),
-                                                                'p': Counter({(99, 0, 3): 100})})
+                               'p': Counter({(99, 0, 3): 100})},
+                               pair=SimpleNamespace(behavior_name=lambda mt: 'DOOR' if mt == 100 else 'NORMAL'))
 
     def test_exact_context_excludes_letter_only_beach_candidate(self):
         rows = ['...', '.p.', '...']
@@ -141,7 +153,7 @@ class Context(unittest.TestCase):
         rules.context4[blockout.letter_context(rows, 1, 1, True)] = Counter({(11, 0, 3): 3})
         choices, _, notes = blockout.context_candidates(rows, rules)
         self.assertEqual(choices[1, 1], [10])
-        self.assertTrue(any('3x3:1 4-neighbour:0 letter:8 empty:0' in n for n in notes))
+        self.assertTrue(any('3x3:1 4-neighbour:0 letter:8 any-non-door:0 empty:0' in n for n in notes))
 
     def test_four_neighbour_then_letter_fallback_are_counted(self):
         rows = ['...', '.p.', '...']
@@ -149,11 +161,74 @@ class Context(unittest.TestCase):
         rules.context4[blockout.letter_context(rows, 1, 1, True)] = Counter({(11, 0, 3): 3})
         choices, _, notes = blockout.context_candidates(rows, rules)
         self.assertEqual(choices[1, 1], [11])
-        self.assertTrue(any('3x3:0 4-neighbour:1 letter:8 empty:0' in n for n in notes))
+        self.assertTrue(any('3x3:0 4-neighbour:1 letter:8 any-non-door:0 empty:0' in n for n in notes))
         rules.context4.clear()
         choices, _, notes = blockout.context_candidates(rows, rules)
         self.assertEqual(choices[1, 1], [99])
-        self.assertTrue(any('letter:9 empty:0' in n for n in notes))
+        self.assertTrue(any('letter:9 any-non-door:0 empty:0' in n for n in notes))
+
+    def test_connected_target_edge_is_a_wildcard_not_a_closed_border(self):
+        rows = ['.p.', '...', '...']
+        rules = self.rules()
+        rules.context3['ggg.p....'] = Counter({(10, 0, 3): 3})
+        closed, _, _ = blockout.context_candidates(rows, rules)
+        opened, _, _ = blockout.context_candidates(rows, rules, {'N'})
+        self.assertEqual(closed[1, 0], [99])
+        self.assertEqual(opened[1, 0], [10])
+        self.assertEqual(opened.levels[1, 0], 0)
+
+    def test_connected_source_edge_matches_known_target_letters(self):
+        rules = self.rules()
+        rules.context3['***.p....'] = Counter({(10, 0, 3): 3})
+        choices, _, _ = blockout.context_candidates(['ggg', '.p.', '...'], rules)
+        self.assertEqual(choices[1, 1], [10])
+
+    def test_any_non_door_excludes_doors_and_reports_each_coordinate_step(self):
+        rules = self.rules()
+        del rules.letters['p']
+        rules.letters['b'] = Counter({(100, 0, 3): 50, (101, 1, 3): 1})
+        choices, _, notes = blockout.context_candidates(['p'], rules)
+        self.assertEqual(set(choices[0, 0]), {8, 101})
+        self.assertEqual(choices.levels[0, 0], 3)
+        steps = [n for n in notes if n.startswith('INFO BLOCKOUT widen 0,0 ')]
+        self.assertEqual(len(steps), 3)
+        self.assertIn('3x3->4-neighbour', steps[0])
+        self.assertIn('4-neighbour->letter', steps[1])
+        self.assertIn('letter->any-non-door', steps[2])
+
+    def test_one_empty_domain_widens_only_that_cell_one_step(self):
+        rows = ['...', '.p.', '...']
+        rules = self.rules()
+        rules.context3[blockout.letter_context(rows, 1, 1)] = Counter({(10, 0, 3): 3})
+        rules.context4[blockout.letter_context(rows, 1, 1, True)] = Counter({(11, 0, 3): 3})
+        choices, bits, _ = blockout.context_candidates(rows, rules)
+        original_levels = dict(choices.levels)
+        def support(repo, grid, pair, rows, values, bits, exhausted):
+            if values.levels[1, 1] == 0:
+                values[1, 1] = []
+            return []
+        with patch.object(blockout, 'supported_contexts', side_effect=support):
+            notes = blockout.resolve_contexts(None, None, None, rows, choices, bits)
+        self.assertEqual(choices[1, 1], [11])
+        for p, level in original_levels.items():
+            self.assertEqual(choices.levels[p], level + int(p == (1, 1)))
+        self.assertEqual(sum(n.startswith('INFO BLOCKOUT widen 1,1 ') for n in notes), 1)
+
+    def test_support_exhaustion_reaches_any_non_door_without_aborting_rest(self):
+        rows = ['...', '.p.', '...']
+        rules = self.rules()
+        rules.context3[blockout.letter_context(rows, 1, 1)] = Counter({(10, 0, 3): 3})
+        rules.context4[blockout.letter_context(rows, 1, 1, True)] = Counter({(11, 0, 3): 3})
+        choices, bits, _ = blockout.context_candidates(rows, rules)
+        def support(repo, grid, pair, rows, values, bits, exhausted):
+            if values.levels[1, 1] < 3:
+                values[1, 1] = []
+            return []
+        with patch.object(blockout, 'supported_contexts', side_effect=support):
+            notes = blockout.resolve_contexts(None, None, None, rows, choices, bits)
+        self.assertEqual(choices.levels[1, 1], 3)
+        self.assertTrue(all(choices.values()))
+        self.assertEqual(sum(n.startswith('INFO BLOCKOUT widen 1,1 ') for n in notes), 3)
 
     def test_empty_domains_report_counts_per_full_pattern(self):
         rules = self.rules()
@@ -256,11 +331,25 @@ class Forest(unittest.TestCase):
         glue = SimpleNamespace(raw={1: {'nmt': {s: Counter({2: 10}) if s == 'W' else Counter()
                                               for s in blockout.objects.SIDES}}},
                                objectish=lambda cell: cell[0] == 1,
+                               neighbour=lambda *a: (8, True),
                                broken_side=lambda *a: None)
         with patch.object(blockout.objects, 'Glue', return_value=glue):
             notes = blockout.supported_contexts(object(), grid, object(), rows, choices, bits)
         self.assertEqual(choices[0, 1], [2])
         self.assertTrue(any('empty-cells:0' in n for n in notes))
+
+    def test_connected_side_skips_pruning_but_closed_side_uses_glue(self):
+        rows = ['...', '...', '...']
+        grid = self.Grid()
+        for connected in (False, True):
+            choices = {(x, y): [8] for y in range(3) for x in range(3)}
+            bits = {p: {8: (8, 0, 3)} for p in choices}
+            glue = SimpleNamespace(raw={}, objectish=lambda cell: False,
+                neighbour=lambda x, y, side: None if connected and side == 'N' else (14, True),
+                broken_side=lambda x, y, side, *a: True if side == 'N' else None)
+            with patch.object(blockout.objects, 'Glue', return_value=glue):
+                blockout.supported_contexts(None, grid, None, rows, choices, bits)
+            self.assertEqual(bool(choices[1, 0]), connected)
 
 
 def benchmark(rebuilds_only=False):
@@ -309,12 +398,18 @@ def benchmark(rebuilds_only=False):
         added = len(set(blockout.objects.check(repo, grid, pair)) - set(blockout.objects.check(repo, original, pair)))
         losses = blockout.reach_losses(original, grid, pair)
         render = f'.pk/render/blockout_{name}.png'
+        audit = f'.pk/render/blockout_{name}.txt'
         output = Transaction(repo, 'blockout benchmark render only')
         output.stage(render, render_compare(repo, (original, pair), (grid, pair)))
+        output.stage(audit, ('command: python tools/pk/tests/test_blockout.py --benchmark' +
+                     (' --rebuilds-only' if rebuilds_only else '') + '\n' +
+                     f'{name} fidelity:{report["fidelity"]:.2%} new_OBJECT:{added} '
+                     f'original_reach_lost:{sum(losses.values())} open_bank:{report["open_bank"]}\n' +
+                     '\n'.join(report['rows']) + '\n').encode('utf-8'))
         output.commit(False)
         ok = added == 0 and not losses and report['fidelity'] >= .95 and not report['open_bank']
         print(f'retile {name} new_OBJECT:{added} reach_lost:{sum(losses.values())} '
-              f'fidelity:{report["fidelity"]:.2%} open_bank:{report["open_bank"]} pass:{ok} render:{render}', flush=True)
+              f'fidelity:{report["fidelity"]:.2%} open_bank:{report["open_bank"]} pass:{ok} render:{render} audit:{audit}', flush=True)
         print('\n'.join(report['rows']), flush=True)
         actual = blockout.export(repo, grid, pair)
         mismatches = Counter(a for expected, observed in zip(rows, actual)

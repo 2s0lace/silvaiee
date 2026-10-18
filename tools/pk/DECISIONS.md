@@ -1256,3 +1256,35 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - Updated .pk/render/blockout_Route1_Frlg.png (original left, retained wipe after refusal right).
   INFO skipped: remaining four rebuilds, coastal map, Parts 2-3 and read-only v3 table. Prior
   10-map round trips were explicitly skipped on this resume. No game-map data writes; Part 1 WIP.
+
+## Blockout connected-side wildcard and audited per-cell widening (2026-10-18, Codex)
+- Owner authorized connected-edge wildcard contexts and finite widening instead of global refusal.
+  Contexts use objects.connected_sides (objects.py:63) for source and target: * beyond a connected
+  side, _ beyond an unconnected side. Wildcard matching works from either example or target.
+  Support skips outside sides where Glue.neighbour (:141) returns None; closed edges still call
+  Glue.broken_side (:151). No objects.py/wfc.py/paths.py/shapes.py edits or dependency copies.
+- Added a finite per-cell ladder: 3x3 -> four-neighbour -> letter -> observed non-door (game physical
+  class, never names). Every step reports coordinates, levels, candidate count and reason. Each
+  retry restores unpruned current-level neighbours so a widened cell can revive their support.
+  Broad-support exhaustion is reported and the rest is attempted; the final OBJECT/reach/fidelity
+  guards remain unchanged. Only b is initially fixed. All widening rows persist in an ignored audit.
+- Command: python tools/pk/tests/test_blockout.py -> 30 tests PASS. Includes actual Route1 connection
+  parity with Glue, open vs closed edge pruning, wildcard examples/targets, exact one-step widening,
+  non-door fallback filtering and coordinate reports. Command:
+  python release/silvaiee/tools/pk/tests/test_blockout.py -> 30 run, OK (skipped=2), explicit INFO for
+  the public checkout's absent optional WFC module. Public benchmark is not claimed as tested.
+- Command: python tools/pk/tests/test_blockout.py --benchmark --rebuilds-only -> Route1 FAIL overall:
+  958/960=99.79% letters (>=95% PASS); new_OBJECT:23 (target 0 FAIL); original-map reach_lost:0
+  (PASS); open_bank:0. The former 9,0 blocker is gone; connected sides are N,S. Initial context
+  exact/four/letter/empty:856/75/29/0; final exact/four/letter/any/empty:845/73/39/3/0.
+  115 cells widened in 160 recorded steps; any-non-door cells: (9,5), (10,36), (8,4).
+- WFC returned 370 unresolved cells; context-restricted pair fallback filled forest/rim:498, then
+  rest:660. Mismatch T:2. Object warnings include repeated 0x01C and 0x01F tree halves at rows
+  12/13 and 35/36. The render also retains fence-like substitutions on the right forest wall;
+  letter fidelity alone is not graphical acceptance. The final object guard rejected the write.
+- Artifacts: .pk/render/blockout_Route1_Frlg.png (original left, rejected proposal right) and
+  .pk/render/blockout_Route1_Frlg.txt (complete widening-coordinate audit and command/summary).
+  Generic proposal WARN reach compares against the initially walkable wipe; acceptance/audit-header
+  reach uses original vanilla and loses no cells. No game-map data writes or target relaxation.
+- STOP at the object target miss. INFO skipped: remaining four rebuilds, coastal map, Parts 2-3,
+  v3 table and previously passed 10-map round trips on this resumed run. Part 1 remains WIP.
