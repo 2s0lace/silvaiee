@@ -1226,3 +1226,33 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   WFC-specific contract tests print INFO and skip there. Part 1 remains unaccepted WIP.
 - Public verification: python release/silvaiee/tools/pk/tests/test_blockout.py -> 18 tests run,
   OK (skipped=4), each skip explicitly reports the absent optional WFC module.
+
+## Blockout letter-context candidates and mutable lawn; stopped on unsupported top-edge domain (2026-10-18, Codex)
+- Owner review: letter-only selection admitted beach/grey tiles, and modal frozen lawn prevented
+  forest/ledge joins. Added exact 3x3 letter-context candidates, then centre+N/E/S/W, then centre
+  letter. Learned from exported vanilla outdoor blockouts, excluding the held-out layout/aliases.
+  Same-primary/version portable primary IDs from other pairs are included; source and destination
+  exported letters must agree. Collision/elevation come from observed tuples at the selected level.
+- Only b is initially fixed. Every other cell, including lawn/event cells, participates. Forest WFC
+  receives its full mask plus mutable non-building rim; rest/lawn joins use context-restricted pairs.
+  Object socket support and map-edge constraints can shrink domains, never silently widen them.
+  Final OBJECT/reach/fidelity guards remain unchanged. Removed the old tree/rock stamp path.
+- API evidence: wfc.py learn:113/fill:544; terrain.py solve:83; objects.py constrained:110,
+  Glue:121/broken_side:151. Existing wfc.py, paths.py and shapes.py were not edited/copied.
+- Command: python tools/pk/tests/test_blockout.py -> 23 tests pass (fallback hierarchy/counters,
+  per-pattern empty reports, mutable lawn, frozen b, domain validation and no-map-write refusal).
+  Command: python release/silvaiee/tools/pk/tests/test_blockout.py -> 23 run, OK (skipped=2);
+  optional WFC is absent there, each WFC contract skip prints INFO. Other tests still run.
+- Command: python tools/pk/tests/test_blockout.py --benchmark --rebuilds-only -> references:71,
+  portable cells:93451, incompatible class cells:0. Route1 context 3x3:785, four-neighbour:125,
+  letter-only:50, initially empty:0. Per-letter exact/four/letter counts: . 169/31/23;
+  T 265/33/2; f 15/7/3; g 154/15/9; p 151/15/6; r 0/0/1; v 31/24/6.
+- Object support removed 354 candidates and emptied one domain, pattern ___/TTp/TTp. Forest/rest
+  were explicitly skipped: FAIL/refused before solving, not a successful reconstruction. Retained
+  wipe fidelity:223/960=23.23%; new_OBJECT:0; original-map reach_lost:0; open_bank:0. These zeroes
+  reflect refusal. The 95%/zero-object/reach targets were NOT loosened. STOP on first miss.
+- Read-only coordinate lookup (command using Repo/load/export/letter_context and border_reader)
+  matched that pattern only at (9,0); it did not modify source maps or generation candidates.
+- Updated .pk/render/blockout_Route1_Frlg.png (original left, retained wipe after refusal right).
+  INFO skipped: remaining four rebuilds, coastal map, Parts 2-3 and read-only v3 table. Prior
+  10-map round trips were explicitly skipped on this resume. No game-map data writes; Part 1 WIP.

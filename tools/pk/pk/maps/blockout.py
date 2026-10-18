@@ -5,15 +5,14 @@ vanilla_outdoor; cards.aggregate/finalize; meta.draw/render_compare; terrain.sol
 and Rules.pair_score; objects.Glue/check; kit.glued_sides/window_cuts; reach.World.
 The colour classifier is deliberately documented as heuristic, not semantic truth.
 """
-from collections import Counter
+from collections import Counter, deque
 from copy import copy
 
 from ..core.errors import PkError
 from ..core.out import Result
 from ..core.repo import Repo
-from . import cards, kit, layout, objects, terrain
+from . import cards, layout, objects, terrain
 from .edit import load, save
-from .layers import events
 from .lint import physical_class, vanilla_outdoor, stratum_of
 from .meta import draw
 from .reach import World, STATES
@@ -125,6 +124,14 @@ def pattern(rows, x, y):
     return ''.join(rows[ny][nx] for ny in range(y - 1, y + 2) for nx in range(x - 1, x + 2))
 
 
+def letter_context(rows, x, y, cardinal=False):
+    """3x3 or centre,N,E,S,W. '_' is outside the map, never a file letter."""
+    offsets = ((0, 0), (0, -1), (1, 0), (0, 1), (-1, 0)) if cardinal else (
+        (dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1))
+    return ''.join(rows[y + dy][x + dx] if 0 <= y + dy < len(rows)
+                   and 0 <= x + dx < len(rows[0]) else '_' for dx, dy in offsets)
+
+
 def vocabulary(repo):
     ref = reference(repo)
     if not hasattr(ref, '_blockout_vocabulary'):
@@ -213,25 +220,40 @@ class LetterRules(terrain.Rules):
         self.pair, self.classify = pair, classify
         self.h, self.v, self.ne, self.nw, self.se, self.sw = (Counter() for _ in range(6))
         self.freq, self.by_mat, self.bits = Counter(), {}, {}
+        self.context3, self.context4, self.letters = {}, {}, {}
         self.sources = []
+        self.portable_cells = self.class_mismatches = 0
         for name, _ in vanilla_outdoor(repo):
             grid, source_pair = load(repo, name)
-            if (source_pair.primary['symbol'], source_pair.secondary['symbol']) != (
-                    pair.primary['symbol'], pair.secondary['symbol']):
+            if source_pair.primary['symbol'] != pair.primary['symbol'] or source_pair.version != pair.version:
                 continue
+            own = source_pair.secondary['symbol'] == pair.secondary['symbol']
+            limit = pair.limits['metatiles']
+            rows = export(repo, grid, source_pair)
             self.sources.append(grid)
             for y in range(grid.h):
                 for x in range(grid.w):
                     cell = grid.at(x, y)
                     mt = cell[0]
+                    if not own and mt >= limit:
+                        continue
                     char = self.material(cell)
+                    if char != rows[y][x]:
+                        self.class_mismatches += 1
+                        continue
+                    self.portable_cells += not own
                     self.freq[mt] += 1
                     self.by_mat.setdefault(char, set()).add(mt)
                     self.bits.setdefault(mt, Counter())[cell[1:]] += 1
+                    self.letters.setdefault(char, Counter())[cell] += 1
+                    self.context3.setdefault(letter_context(rows, x, y), Counter())[cell] += 1
+                    self.context4.setdefault(letter_context(rows, x, y, True), Counter())[cell] += 1
                     for dx, dy, table in ((1, 0, self.h), (0, 1, self.v), (1, -1, self.ne),
                                           (-1, -1, self.nw), (1, 1, self.se), (-1, 1, self.sw)):
                         if grid.inside(x + dx, y + dy):
-                            table[mt, grid.at(x + dx, y + dy)[0]] += 1
+                            other = grid.at(x + dx, y + dy)[0]
+                            if own or other < limit:
+                                table[mt, other] += 1
 
     def material(self, cell):
         return self.classify.letter(cell)
@@ -267,6 +289,7 @@ def learning_reference(repo, exclude):
     key = tuple(sorted(set(exclude)))
     if key not in cache:
         cache[key] = LearningRepo(ref.root, key)
+        cache[key]._blockout_reference = ref  # share immutable export/card vocabulary, not generation statistics
     return cache[key]
 
 
@@ -279,97 +302,142 @@ def learned(repo, pair, exclude=()):
     return cache[key]
 
 
-def forest(repo, grid, pair, rows, rules, fixed=frozenset(), exclude=()):
-    """Solve the full T mask, never individual trees, and never touch non-T cells.
+def context_candidates(rows, rules):
+    """Exact 3x3 -> centre+cardinals -> letter; never an unreported empty."""
+    choices, cells, counts, per_letter, empty_patterns = {}, {}, Counter(), {}, Counter()
+    for y, row in enumerate(rows):
+        for x, char in enumerate(row):
+            if char == 'b':
+                continue
+            key3, key4 = letter_context(rows, x, y), letter_context(rows, x, y, True)
+            found, level = rules.context3.get(key3), '3x3'
+            if not found:
+                found, level = rules.context4.get(key4), '4-neighbour'
+            if not found:
+                found, level = rules.letters.get(char), 'letter'
+            if not found:
+                found, level = {}, 'empty'
+                empty_patterns[key3] += 1
+            counts[level] += 1
+            per_letter.setdefault(char, Counter())[level] += 1
+            by_mt = {}
+            for cell, n in found.items():
+                by_mt.setdefault(cell[0], Counter())[cell] += n
+            order = sorted(by_mt, key=lambda mt: (-sum(by_mt[mt].values()), mt))
+            choices[x, y] = order
+            cells[x, y] = {mt: by_mt[mt].most_common(1)[0][0] for mt in order}
+    notes = ['INFO BLOCKOUT context ' + ' '.join(f'{level}:{counts[level]}'
+             for level in ('3x3', '4-neighbour', 'letter', 'empty'))]
+    for char, counter in sorted(per_letter.items()):
+        notes.append(f'INFO BLOCKOUT context letter:{char} ' + ' '.join(
+            f'{level}:{counter[level]}' for level in ('3x3', '4-neighbour', 'letter', 'empty')))
+    for key, n in sorted(empty_patterns.items()):
+        notes.append(f'INFO BLOCKOUT context EMPTY pattern:{key[:3]}/{key[3:6]}/{key[6:]} cells:{n}')
+    return choices, cells, notes
 
-    wfc.py learn:113 / fill:544 accept an arbitrary coordinate set and forced
-    domains. objects.py Glue:121 / broken_side:151 checks the real map border.
-    terrain.py solve:83 is the deterministic seen-pair fallback. Every proposal
-    must satisfy its T domain and pass the unchanged object guard before commit.
+
+def supported_contexts(repo, grid, pair, rows, choices, cell_bits):
+    """Prune only impossible object sockets; never widen a context domain.
+
+    Glue checks literal map edges. Its already-defined constrained-side criterion
+    supplies arc support between variable neighbours, so lawn can change instead
+    of being tested against a frozen, modal lawn tile. Final OBJECT guard remains.
     """
-    cells = {(x, y) for y, row in enumerate(rows) for x, char in enumerate(row)
-             if char == 'T' and (x, y) not in fixed}
-    if not cells:
-        return ['INFO BLOCKOUT forest skipped: no editable T cells']
-    original = list(grid.cells)
-    before_objects = set(objects.check(repo, grid, pair))
+    fixed = {(x, y) for y, row in enumerate(rows) for x, c in enumerate(row) if c == 'b'}
+    domains = {p: set(values) for p, values in choices.items()}
+    bits = dict(cell_bits)
+    for p in fixed:
+        cell = grid.at(*p)
+        domains[p], bits[p] = {cell[0]}, {cell[0]: cell}
     glue = objects.Glue(repo, grid, pair)
-    candidates = sorted(mt for mt in rules.by_mat.get('T', ())
-                        if rules.material((mt, *rules.bits[mt].most_common(1)[0][0])) == 'T')
-    bits = {mt: (mt, *rules.bits[mt].most_common(1)[0][0]) for mt in candidates}
-    choices = {}
     reverse = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}
-    # Enforce both directions of each object socket against frozen neighbours;
-    # for map edges Glue reads border.bin or skips an actual connected side.
-    for x, y in sorted(cells, key=lambda p: (p[1], p[0])):
-        allowed = []
-        saved = grid.at(x, y)
-        for mt in candidates:
-            grid.set(x, y, bits[mt])
-            valid = True
-            for side, (dx, dy) in objects.SIDES.items():
-                q = x + dx, y + dy
-                if q in cells:
-                    continue
-                if glue.broken_side(x, y, side, bits[mt]) is not None:
-                    valid = False
-                    break
-                if grid.inside(*q) and glue.broken_side(*q, reverse[side]) is not None:
-                    valid = False
-                    break
-            if valid:
-                allowed.append(mt)
-        grid.set(x, y, saved)
-        choices[x, y] = allowed
-    empty = [p for p, domain in choices.items() if not domain]
-    if empty:
-        x, y = empty[0]
-        return [f'INFO BLOCKOUT forest refused: {len(empty)} T cells have no border/frozen-neighbour fit; first {x},{y}']
+    sockets = {}
 
-    def accept(assignment):
-        if set(assignment) != cells or any(mt not in choices[p] for p, mt in assignment.items()):
-            return False, 'incomplete or out-of-domain T assignment'
-        for p, mt in assignment.items():
-            grid.set(*p, bits[mt])
-        if any(grid.cells[i] != cell for i, cell in enumerate(original)
-               if (i % grid.w, i // grid.w) not in cells):
-            grid.cells[:] = original
-            return False, 'changed a frozen non-T cell'
-        added = set(objects.check(repo, grid, pair)) - before_objects
-        if added:
-            grid.cells[:] = original
-            return False, f'would add {len(added)} WARN OBJECT rows (including edges)'
-        return True, ''
+    def allowed(p, mt, side):
+        cell = bits[p][mt]
+        key = mt, cell[1], side
+        if key not in sockets:
+            rec = glue.raw.get(mt)
+            if rec is None or not glue.objectish(cell):
+                sockets[key] = None
+            else:
+                counts = Counter(rec['nmt'][side])
+                sockets[key] = set(counts) if objects.constrained(counts) is not None else None
+        return sockets[key]
 
-    notes = []
+    def fits(p, mt, q, other, side):
+        forward, backward = allowed(p, mt, side), allowed(q, other, reverse[side])
+        return (forward is None or other in forward) and (backward is None or mt in backward)
+
+    initial = sum(len(d) for d in domains.values())
+    for p, values in domains.items():
+        if p in fixed:
+            continue
+        x, y = p
+        for side, (dx, dy) in objects.SIDES.items():
+            if not grid.inside(x + dx, y + dy):
+                domains[p] = {mt for mt in domains[p]
+                              if glue.broken_side(x, y, side, bits[p][mt]) is None}
+    queue = deque((p, side) for p in choices for side, (dx, dy) in objects.SIDES.items()
+                  if (p[0] + dx, p[1] + dy) in domains) if all(domains[p] for p in choices) else deque()
+    while queue:
+        p, side = queue.popleft()
+        dx, dy = objects.SIDES[side]
+        q = p[0] + dx, p[1] + dy
+        revised = {mt for mt in domains[p] if any(fits(p, mt, q, other, side) for other in domains[q])}
+        if revised != domains[p]:
+            domains[p] = revised
+            if not revised:
+                break  # report the contradiction's origin, not a cascade of empty domains
+            for incoming, (ox, oy) in objects.SIDES.items():
+                neighbour = p[0] + ox, p[1] + oy
+                if neighbour in choices and neighbour != q:
+                    queue.append((neighbour, reverse[incoming]))
+    empty = Counter(letter_context(rows, *p) for p in choices if not domains[p])
+    notes = [f'INFO BLOCKOUT context object-support removed:{initial - sum(len(d) for d in domains.values())} '
+             f'empty-cells:{sum(empty.values())} (no domain expansion)']
+    for key, n in sorted(empty.items()):
+        notes.append(f'INFO BLOCKOUT context UNSUPPORTED pattern:{key[:3]}/{key[3:6]}/{key[6:]} cells:{n}')
+    for p in choices:
+        choices[p] = [mt for mt in choices[p] if mt in domains[p]]
+    return notes
+
+
+def apply_candidates(grid, assignment, choices, cell_bits):
+    if any(p not in choices or mt not in choices[p] for p, mt in assignment.items()):
+        raise PkError('INTERNAL', 'context solver returned an out-of-domain cell')
+    for p, mt in assignment.items():
+        grid.set(*p, cell_bits[p][mt])
+
+
+def forest(repo, grid, pair, rows, rules, choices, cell_bits, exclude=()):
+    """Forest WFC first, with its mutable non-building edge ring; no modal lawn."""
+    trees = {p for p in choices if rows[p[1]][p[0]] == 'T'}
+    if not trees:
+        return ['INFO BLOCKOUT forest skipped: no T cells']
+    region = trees | {q for x, y in trees for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                      if (q := (x + dx, y + dy)) in choices}
+    forced = {p: choices[p] for p in region}
+    notes = [f'INFO BLOCKOUT forest region T:{len(trees)} mutable-ring:{len(region - trees)} b:frozen']
     try:
         from . import wfc
         ref = learning_reference(repo, exclude)
         vocab = wfc.learn(ref, pair, use_cache=False, exclude=tuple(exclude))
-        proposal = wfc.fill(ref, grid, pair, sorted(cells, key=lambda p: (p[1], p[0])),
-                            forced=choices, vocabulary=vocab)
-        if proposal.complete:
-            ok, reason = accept(proposal)
-            if ok:
-                return [f'INFO BLOCKOUT forest WFC cells:{len(cells)} patterns:{len(vocab)} '
-                        f'exclude:{",".join(exclude) or "none"} non-T:frozen OBJECT:new:0']
-        else:
-            reason = proposal.reason or f'incomplete ({len(proposal.unsatisfied)} unresolved cells)'
+        proposal = wfc.fill(ref, grid, pair, sorted(region, key=lambda p: (p[1], p[0])),
+                            forced=forced, vocabulary=vocab)
+        if proposal.complete and set(proposal) == region and all(mt in forced[p] for p, mt in proposal.items()):
+            apply_candidates(grid, proposal, choices, cell_bits)
+            return notes + [f'INFO BLOCKOUT forest WFC solved:{len(region)} patterns:{len(vocab)} '
+                            f'exclude:{",".join(exclude) or "none"} (final OBJECT guard pending)']
+        reason = proposal.reason or f'incomplete/invalid ({len(proposal.unsatisfied)} unresolved cells)'
         notes.append(f'INFO BLOCKOUT forest WFC fallback: {reason}')
     except (PkError, ImportError) as exc:
         notes.append(f'INFO BLOCKOUT forest WFC fallback: {exc}')
-    # WFC may retain an invalid original in an incomplete fill: never use it as
-    # a seed. Every fallback seed is itself an allowed T metatile.
-    picked = terrain.solve(grid, rules, {p: 'T' for p in cells}, margin=0,
-                           choices=choices, seed={p: choices[p][0] for p in cells},
-                           passes=24, diag_weight=.5)
-    ok, reason = accept(picked)
-    if ok:
-        notes.append(f'INFO BLOCKOUT forest seen-pair fallback cells:{len(cells)} '
-                     f'exclude:{",".join(exclude) or "none"} non-T:frozen OBJECT:new:0')
-    else:
-        notes.append(f'INFO BLOCKOUT forest fallback refused: {reason}; original T-region cells retained')
-    return notes
+    targets = {p: rows[p[1]][p[0]] for p in region}
+    proposal = terrain.solve(grid, rules, targets, margin=0, choices=forced,
+                             seed={p: grid.at(*p)[0] for p in region}, passes=24, diag_weight=.5)
+    apply_candidates(grid, proposal, choices, cell_bits)
+    return notes + [f'INFO BLOCKOUT forest seen-pair fallback solved:{len(region)} (final OBJECT guard pending)']
 
 
 def reach_losses(before, after, pair):
@@ -383,30 +451,6 @@ def reach_losses(before, after, pair):
     return lost
 
 
-def object_pieces(repo, pair, rules):
-    """Small whole vanilla kit windows only; no cut object perimeter is allowed."""
-    raw = objects.Glue(repo, rules.sources[0], pair, edges=False).raw
-    pieces, seen = [], set()
-    for source in rules.sources:
-        letters = export(repo, source, pair)
-        glued = kit.glued_sides(repo, source, pair, raw)
-        excluded = events(source.data)
-        for w, h in ((2, 2), (2, 3), (3, 2)):
-            for y in range(source.h - h + 1):
-                for x in range(source.w - w + 1):
-                    chars = ''.join(letters[y + dy][x:x + w] for dy in range(h))
-                    if not (set(chars) & set('Tr')) or set(chars) - set('Tr.'):
-                        continue
-                    if any((x + dx, y + dy) in excluded for dy in range(h) for dx in range(w)):
-                        continue
-                    if kit.window_cuts(glued, x, y, w, h):
-                        continue
-                    cells = tuple(source.at(x + dx, y + dy) for dy in range(h) for dx in range(w))
-                    key = w, h, cells
-                    if key not in seen:
-                        seen.add(key)
-                        pieces.append((w, h, chars, cells))
-    return pieces
 
 
 def tile(repo, grid, pair, rows, exclude=()):
@@ -420,57 +464,36 @@ def tile(repo, grid, pair, rows, exclude=()):
                           f'INFO BLOCKOUT fidelity {grid.w * grid.h}/{grid.w * grid.h} = 100.00%',
                           'INFO BLOCKOUT tiling/joins skipped: no changed letters'])
     rules = learned(repo, pair, exclude)
-    if not rules.sources:
-        raise PkError('NOTFOUND', 'no vanilla outdoor reference for target pair')
-    out = ['INFO BLOCKOUT shapes fallback: existing shape benchmark is not accepted; material solver used',
-           'INFO BLOCKOUT paths fallback: existing path benchmark is not accepted; drawn-cell brush used']
-    wanted = {(x, y): char for y, row in enumerate(rows) for x, char in enumerate(row)}
-    fixed = {p for p, char in wanted.items() if char == 'b'} | set(events(grid.data))
-    # Trees are solved jointly as a forest; rocks still use whole source pieces.
-    lawn_cells = Counter(cell for source in rules.sources for cell in source.cells if rules.material(cell) == '.')
-    if not lawn_cells:
-        raise PkError('NOTFOUND', 'no observed target-pair lawn; no generic grass fallback')
-    lawn = lawn_cells.most_common(1)[0][0]
-    for p in wanted.keys() - fixed:
-        grid.set(*p, lawn)
-    # Bulk materials, then paths, then objects, then encounter grass/ledges/flowers.
-    for chars in ('~s', 'p', 'gv^<>f'):
-        targets = {p: char for p, char in wanted.items() if char in chars and p not in fixed}
-        missing = sorted(set(targets.values()) - rules.by_mat.keys())
-        for char in missing:
-            out.append(f'INFO BLOCKOUT material {char} skipped: no observed target-pair tiles')
-        targets = {p: char for p, char in targets.items() if char not in missing}
-        if not targets:
-            continue
-        choices = {p: sorted(rules.by_mat[char]) for p, char in targets.items()}
-        picked = terrain.solve(grid, rules, targets, margin=0, choices=choices,
-                               seed={p: choices[p][0] for p in targets}, passes=12, diag_weight=.5)
-        for p, mt in picked.items():
-            coll, elev = rules.bits[mt].most_common(1)[0][0]
-            grid.set(*p, (mt, coll, elev))
-    out.extend(forest(repo, grid, pair, rows, rules, fixed, exclude))
-    pending = {p for p, char in wanted.items() if char == 'r' and p not in fixed}
-    initial_objects = set(objects.check(repo, grid, pair))
-    pieces = object_pieces(reference(repo), pair, rules) if pending else []
-    for w, h, chars, cells in pieces:
-        for x, y in sorted(list(pending), key=lambda p: (p[1], p[0])):
-            positions = [(x + dx, y + dy) for dy in range(h) for dx in range(w)]
-            if any(not grid.inside(*p) or p in fixed or wanted[p] == 'T' for p in positions):
-                continue
-            if ''.join(wanted[p] for p in positions) != chars:
-                continue
-            saved = [grid.at(*p) for p in positions]
-            for p, cell in zip(positions, cells):
-                grid.set(*p, cell)
-            if set(objects.check(repo, grid, pair)) - initial_objects:
-                for p, cell in zip(positions, saved):
-                    grid.set(*p, cell)
-            else:
-                pending.difference_update(positions)
-    if pending:
-        p = min(pending)
-        out.append(f'INFO BLOCKOUT whole objects unfit:{len(pending)} cells; lawn retained (first {p[0]},{p[1]})')
-    out.append('INFO BLOCKOUT terrain auto skipped: unrestricted joins could change letter classes or source objects')
+    out = [f'INFO BLOCKOUT context references maps:{len(rules.sources)} portable-cells:{rules.portable_cells} '
+           f'incompatible-class-cells:{rules.class_mismatches} exclude:{",".join(exclude) or "none"}',
+           'INFO BLOCKOUT shape/path material brushes replaced by context-restricted full-map solve']
+    choices, cell_bits, notes = context_candidates(rows, rules)
+    out.extend(notes)
+    valid_context = all(choices.values())
+    if valid_context:
+        out.extend(supported_contexts(repo, grid, pair, rows, choices, cell_bits))
+        valid_context = all(choices.values())
+    if valid_context:
+        # Only b cells are initially fixed. Every other cell, including lawn and
+        # cells under events, receives a legal context seed and participates.
+        seed = {p: grid.at(*p)[0] if grid.at(*p)[0] in values else values[0]
+                for p, values in choices.items()}
+        apply_candidates(grid, seed, choices, cell_bits)
+        out.append(f'INFO BLOCKOUT solve editable:{len(choices)} '
+                   f'frozen-b:{grid.w * grid.h - len(choices)} (no modal-lawn or event freeze)')
+        out.extend(forest(repo, grid, pair, rows, rules, choices, cell_bits, exclude))
+        rest = {p: rows[p[1]][p[0]] for p in choices if rows[p[1]][p[0]] != 'T'}
+        if rest:
+            picked = terrain.solve(grid, rules, rest, margin=0,
+                                   choices={p: choices[p] for p in rest},
+                                   seed={p: grid.at(*p)[0] for p in rest}, passes=24, diag_weight=.5)
+            apply_candidates(grid, picked, choices, cell_bits)
+            out.append(f'INFO BLOCKOUT rest solved:{len(rest)} (including lawn/forest joins)')
+        else:
+            out.append('INFO BLOCKOUT rest skipped: no non-tree editable cells')
+    else:
+        out.append('INFO BLOCKOUT tiling refused: empty context/support domains; forest/rest skipped')
+    out.append('INFO BLOCKOUT unrestricted terrain auto skipped: joins already solved in context domains')
     actual = export(repo, grid, pair)
     matched = sum(a == b for row, other in zip(rows, actual) for a, b in zip(row, other))
     fidelity = matched / (grid.w * grid.h)
@@ -489,7 +512,7 @@ def tile(repo, grid, pair, rows, exclude=()):
     if open_bank:
         out.append(f'WARN BLOCKOUT bank open-water/lawn:{len(open_bank)} first:{open_bank[0]}')
     out.append(f'INFO BLOCKOUT fidelity {matched}/{grid.w * grid.h} = {fidelity:.2%}')
-    safe = not added and not losses and not open_bank and fidelity >= .95
+    safe = valid_context and not added and not losses and not open_bank and fidelity >= .95
     return dict(safe=safe, fidelity=fidelity, added=len(added), losses=losses,
                 open_bank=len(open_bank), rows=out)
 

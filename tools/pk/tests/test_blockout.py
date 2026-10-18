@@ -129,6 +129,59 @@ class Maps(unittest.TestCase):
         self.assertFalse(any(name.startswith('Pk') for name in ref.maps()))
 
 
+class Context(unittest.TestCase):
+    def rules(self):
+        return SimpleNamespace(context3={}, context4={}, letters={'.': Counter({(8, 0, 3): 1}),
+                                                                'p': Counter({(99, 0, 3): 100})})
+
+    def test_exact_context_excludes_letter_only_beach_candidate(self):
+        rows = ['...', '.p.', '...']
+        rules = self.rules()
+        rules.context3[blockout.letter_context(rows, 1, 1)] = Counter({(10, 0, 3): 3})
+        rules.context4[blockout.letter_context(rows, 1, 1, True)] = Counter({(11, 0, 3): 3})
+        choices, _, notes = blockout.context_candidates(rows, rules)
+        self.assertEqual(choices[1, 1], [10])
+        self.assertTrue(any('3x3:1 4-neighbour:0 letter:8 empty:0' in n for n in notes))
+
+    def test_four_neighbour_then_letter_fallback_are_counted(self):
+        rows = ['...', '.p.', '...']
+        rules = self.rules()
+        rules.context4[blockout.letter_context(rows, 1, 1, True)] = Counter({(11, 0, 3): 3})
+        choices, _, notes = blockout.context_candidates(rows, rules)
+        self.assertEqual(choices[1, 1], [11])
+        self.assertTrue(any('3x3:0 4-neighbour:1 letter:8 empty:0' in n for n in notes))
+        rules.context4.clear()
+        choices, _, notes = blockout.context_candidates(rows, rules)
+        self.assertEqual(choices[1, 1], [99])
+        self.assertTrue(any('letter:9 empty:0' in n for n in notes))
+
+    def test_empty_domains_report_counts_per_full_pattern(self):
+        rules = self.rules()
+        rules.letters.clear()
+        choices, _, notes = blockout.context_candidates(['ppppp'] * 5, rules)
+        self.assertFalse(any(choices.values()))
+        self.assertIn('INFO BLOCKOUT context EMPTY pattern:ppp/ppp/ppp cells:9', notes)
+        self.assertTrue(any('empty:25' in n for n in notes))
+
+    def test_border_sentinel_and_cardinal_order(self):
+        rows = ['T.', 'p>']
+        self.assertEqual(blockout.letter_context(rows, 0, 0), '____T._p>')
+        self.assertEqual(blockout.letter_context(rows, 0, 0, True), 'T_.p_')
+
+    def test_failed_proposal_stages_no_map_data(self):
+        grid = SimpleNamespace(name='PkBlockTest_Frlg', w=1, h=1)
+        repo = SimpleNamespace(read=lambda path: blockout.serialize(['.']).encode())
+        tx = SimpleNamespace(writes={})
+        with patch.object(blockout, 'load', return_value=(grid, object())), \
+             patch.object(blockout, 'check', return_value=[]), \
+             patch.object(blockout, 'tile', return_value={'safe': False, 'rows': ['WARN OBJECT broken']}), \
+             patch.object(blockout, 'save') as save:
+            result = blockout.command(repo, tx, ['blockout', grid.name, '.pk/test.txt'], {})
+        self.assertFalse(result.ok)
+        save.assert_not_called()
+        self.assertEqual(tx.writes, {})
+
+
 class Forest(unittest.TestCase):
     class Grid:
         w, h = 3, 3
@@ -152,74 +205,62 @@ class Forest(unittest.TestCase):
             print('INFO forest WFC contract tests skipped: optional pk.maps.wfc is not installed', flush=True)
             self.skipTest('optional pk.maps.wfc is not installed')
         grid = self.Grid()
-        rules = SimpleNamespace(by_mat={'T': {1}}, bits={1: Counter({(1, 3): 10})},
-                                material=lambda cell: 'T')
-        fill = wfc.Fill({(1, 0): 1, (1, 1): 1, (1, 2): 1})
+        rows = ['bT.', '.T.', '.T.']
+        choices = {(x, y): [1] if rows[y][x] == 'T' else [8, 9]
+                   for y in range(3) for x in range(3) if rows[y][x] != 'b'}
+        bits = {p: {mt: (mt, int(mt == 1), 3) for mt in values} for p, values in choices.items()}
+        fill = wfc.Fill({p: 1 if rows[p[1]][p[0]] == 'T' else 9 for p in choices})
         fill.complete = complete
         if not complete:
             fill.unsatisfied = [(1, 1)]
-        return grid, rules, fill
+        return grid, rows, choices, bits, fill
 
-    def test_wfc_full_region_domains_and_non_t_frozen(self):
-        grid, rules, fill = self.setup_fill()
-        glue = SimpleNamespace(broken_side=lambda *a: None)
-        with patch.object(blockout.objects, 'check', return_value=[]), \
-             patch.object(blockout.objects, 'Glue', return_value=glue), \
-             patch.object(blockout, 'learning_reference', return_value=object()), \
+    def test_wfc_full_forest_plus_mutable_lawn_b_frozen(self):
+        grid, rows, choices, bits, fill = self.setup_fill()
+        with patch.object(blockout, 'learning_reference', return_value=object()), \
              patch('pk.maps.wfc.learn', return_value=[1]) as learn, \
              patch('pk.maps.wfc.fill', return_value=fill) as solve:
-            notes = blockout.forest(object(), grid, object(), ['.T.', '.T.', '.T.'], rules,
+            notes = blockout.forest(object(), grid, object(), rows, object(), choices, bits,
                                     exclude=('Route1_Frlg',))
         self.assertEqual(learn.call_args.kwargs['exclude'], ('Route1_Frlg',))
         self.assertFalse(learn.call_args.kwargs['use_cache'])
-        self.assertEqual(solve.call_args.args[3], [(1, 0), (1, 1), (1, 2)])
-        self.assertEqual(solve.call_args.kwargs['forced'], {(1, y): [1] for y in range(3)})
-        self.assertTrue(any('forest WFC cells:3' in line for line in notes))
-        for y in range(3):
-            self.assertEqual(grid.at(1, y), (1, 1, 3))
-            self.assertEqual(grid.at(0, y), (8, 0, 3))
-            self.assertEqual(grid.at(2, y), (8, 0, 3))
+        self.assertEqual(set(solve.call_args.args[3]), set(choices))
+        self.assertEqual(solve.call_args.kwargs['forced'], choices)
+        self.assertEqual(grid.at(0, 0), (8, 0, 3))  # b untouched
+        self.assertEqual(grid.at(0, 1), (9, 0, 3))  # lawn is allowed to change
+        self.assertTrue(any('forest WFC solved:8' in n for n in notes))
 
-    def test_incomplete_wfc_uses_seen_pair_fallback(self):
-        grid, rules, fill = self.setup_fill(False)
-        glue = SimpleNamespace(broken_side=lambda *a: None)
-        with patch.object(blockout.objects, 'check', return_value=[]), \
-             patch.object(blockout.objects, 'Glue', return_value=glue), \
-             patch.object(blockout, 'learning_reference', return_value=object()), \
+    def test_incomplete_wfc_uses_context_restricted_pair_fallback(self):
+        grid, rows, choices, bits, fill = self.setup_fill(False)
+        with patch.object(blockout, 'learning_reference', return_value=object()), \
              patch('pk.maps.wfc.learn', return_value=[1]), \
              patch('pk.maps.wfc.fill', return_value=fill), \
              patch.object(blockout.terrain, 'solve', return_value=dict(fill)) as solve:
-            notes = blockout.forest(object(), grid, object(), ['.T.', '.T.', '.T.'], rules)
+            notes = blockout.forest(object(), grid, object(), rows, object(), choices, bits)
         self.assertEqual(solve.call_args.kwargs['margin'], 0)
-        self.assertTrue(any('seen-pair fallback cells:3' in line for line in notes))
+        self.assertEqual(solve.call_args.kwargs['choices'], choices)
+        self.assertTrue(any('seen-pair fallback solved:8' in n for n in notes))
 
-    def test_object_breaking_forest_is_rolled_back(self):
-        grid, rules, fill = self.setup_fill()
+    def test_out_of_domain_assignment_is_refused_before_any_mutation(self):
+        grid = self.Grid()
         before = list(grid.cells)
-        glue = SimpleNamespace(broken_side=lambda *a: None)
-        check = lambda *a: ['WARN OBJECT bad'] if any(c[0] == 1 for c in grid.cells) else []
-        with patch.object(blockout.objects, 'check', side_effect=check), \
-             patch.object(blockout.objects, 'Glue', return_value=glue), \
-             patch.object(blockout, 'learning_reference', return_value=object()), \
-             patch('pk.maps.wfc.learn', return_value=[1]), \
-             patch('pk.maps.wfc.fill', return_value=fill), \
-             patch.object(blockout.terrain, 'solve', return_value=dict(fill)):
-            notes = blockout.forest(object(), grid, object(), ['.T.', '.T.', '.T.'], rules)
+        with self.assertRaisesRegex(PkError, 'out-of-domain'):
+            blockout.apply_candidates(grid, {(1, 1): 99}, {(1, 1): [1]}, {(1, 1): {1: (1, 1, 3)}})
         self.assertEqual(grid.cells, before)
-        self.assertTrue(any('fallback refused' in line for line in notes))
 
-    def test_bad_map_edge_domain_is_refused(self):
-        grid, rules, _ = self.setup_fill()
-        before = list(grid.cells)
-        def bad(x, y, side, cell=None):
-            return True if y == 0 and side == 'N' else None
-        with patch.object(blockout.objects, 'check', return_value=[]), \
-             patch.object(blockout.objects, 'Glue', return_value=SimpleNamespace(broken_side=bad)), \
-             patch('pk.maps.wfc.fill') as solve:
-            notes = blockout.forest(object(), grid, object(), ['.T.', '.T.', '.T.'], rules)
-        solve.assert_not_called()
-        self.assertEqual(grid.cells, before)
-        self.assertTrue(any('no border/frozen-neighbour fit' in line for line in notes))
+    def test_object_support_lets_lawn_change_instead_of_rejecting_tree(self):
+        grid = self.Grid()
+        rows = ['...', '.T.', '...']
+        choices = {(x, y): [1] if (x, y) == (1, 1) else [8, 2] for y in range(3) for x in range(3)}
+        bits = {p: {mt: (mt, int(mt == 1), 3) for mt in values} for p, values in choices.items()}
+        glue = SimpleNamespace(raw={1: {'nmt': {s: Counter({2: 10}) if s == 'W' else Counter()
+                                              for s in blockout.objects.SIDES}}},
+                               objectish=lambda cell: cell[0] == 1,
+                               broken_side=lambda *a: None)
+        with patch.object(blockout.objects, 'Glue', return_value=glue):
+            notes = blockout.supported_contexts(object(), grid, object(), rows, choices, bits)
+        self.assertEqual(choices[0, 1], [2])
+        self.assertTrue(any('empty-cells:0' in n for n in notes))
 
 
 def benchmark(rebuilds_only=False):
