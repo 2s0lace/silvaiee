@@ -7,6 +7,7 @@ The colour classifier is deliberately documented as heuristic, not semantic trut
 """
 from collections import Counter, deque
 from copy import copy
+import time
 
 from ..core.errors import PkError
 from ..core.out import Result
@@ -320,6 +321,7 @@ class ContextDomains(dict):
         super().__init__()
         self.rows, self.connected = rows, connected
         self.bands, self.levels, self.cell_bits, self.history = {}, {}, {}, []
+        self.conflicts = {}
         self.cache = {}
         self.tables = (rules.context3, rules.context4)
         self.index = []
@@ -408,11 +410,11 @@ def context_candidates(rows, rules, connected=frozenset()):
 
 
 def resolve_contexts(repo, grid, pair, rows, choices, cell_bits):
-    """Widen only exhausted cells, one level per retry; always attempt the rest."""
-    notes, exhausted = [], set()
+    """Context may widen; an object rule may NEVER be dropped."""
+    notes = []
     while True:
         choices.restore()
-        notes.extend(supported_contexts(repo, grid, pair, rows, choices, cell_bits, exhausted))
+        notes.extend(supported_contexts(repo, grid, pair, rows, choices, cell_bits, frozenset()))
         empty = sorted((p for p in choices if not choices[p]), key=lambda p: (p[1], p[0]))
         if not empty:
             break
@@ -422,18 +424,25 @@ def resolve_contexts(repo, grid, pair, rows, choices, cell_bits):
             if row:
                 notes.append(row)
                 progress = True
-            elif p not in exhausted:
-                exhausted.add(p)
-                progress = True
-                notes.append(f'INFO BLOCKOUT widen-exhausted {p[0]},{p[1]} any-non-door: '
-                             'attempt broad domain and solve rest; final OBJECT guard unchanged')
+            else:
+                # A broad cell cannot compensate for a neighbour whose narrow
+                # domain demands an incompatible socket. Widen that neighbour,
+                # not the object rule. Prefer the actual failed arc's endpoint.
+                q = choices.conflicts.get(p)
+                adjacent = [(p[0] + dx, p[1] + dy) for dx, dy in objects.SIDES.values()]
+                neighbours = [n for n in adjacent if n in choices and choices.levels[n] < 3]
+                if q in neighbours:
+                    neighbours.remove(q)
+                    neighbours.insert(0, q)
+                if neighbours:
+                    n = neighbours[0]
+                    notes.append(choices.widen(n, f'hard socket blocks exhausted neighbour {p[0]},{p[1]}'))
+                    progress = True
+                else:
+                    notes.append(f'INFO BLOCKOUT unresolved-hard {p[0]},{p[1]} '
+                                 'no compatible object assignment; rules remain hard')
         if not progress:
             break
-    for p in exhausted:
-        if not choices[p]:
-            choices.activate(p, len(CONTEXT_LEVELS) - 1)
-        if not choices[p]:
-            notes.append(f'INFO BLOCKOUT unresolved {p[0]},{p[1]} no learned non-door tiles; solve rest')
     widened = {p for p in choices if choices.levels[p] > 0}
     notes.append(f'INFO BLOCKOUT widen totals cells:{len(widened)} steps:{len(choices.history)}')
     notes.extend(choices.summary('context-final'))
@@ -448,7 +457,9 @@ def supported_contexts(repo, grid, pair, rows, choices, cell_bits, exhausted=fro
     of being tested against a frozen, modal lawn tile. Final OBJECT guard remains.
     """
     fixed = {(x, y) for y, row in enumerate(rows) for x, c in enumerate(row) if c == 'b'}
-    domains = {p: set(values) for p, values in choices.items() if values or p not in exhausted}
+    domains = {p: set(values) for p, values in choices.items()}
+    conflicts = getattr(choices, 'conflicts', {})
+    conflicts.clear()
     bits = dict(cell_bits)
     for p in fixed:
         cell = grid.at(*p)
@@ -475,7 +486,7 @@ def supported_contexts(repo, grid, pair, rows, choices, cell_bits, exhausted=fro
 
     initial = sum(len(d) for d in domains.values())
     for p, values in domains.items():
-        if p in fixed or p in exhausted:
+        if p in fixed:
             continue
         x, y = p
         for side, (dx, dy) in objects.SIDES.items():
@@ -484,7 +495,7 @@ def supported_contexts(repo, grid, pair, rows, choices, cell_bits, exhausted=fro
                     continue  # same connected-side/no-border rule as lint
                 domains[p] = {mt for mt in domains[p]
                               if glue.broken_side(x, y, side, bits[p][mt]) is None}
-    queue = deque((p, side) for p in choices if p not in exhausted
+    queue = deque((p, side) for p in choices
                   for side, (dx, dy) in objects.SIDES.items()
                   if (p[0] + dx, p[1] + dy) in domains) if all(domains[p] for p in domains) else deque()
     while queue:
@@ -495,10 +506,11 @@ def supported_contexts(repo, grid, pair, rows, choices, cell_bits, exhausted=fro
         if revised != domains[p]:
             domains[p] = revised
             if not revised:
+                conflicts[p] = q
                 break  # report the contradiction's origin, not a cascade of empty domains
             for incoming, (ox, oy) in objects.SIDES.items():
                 neighbour = p[0] + ox, p[1] + oy
-                if neighbour in choices and neighbour not in exhausted and neighbour != q:
+                if neighbour in choices and neighbour != q:
                     queue.append((neighbour, reverse[incoming]))
     linked = objects.connected_sides(getattr(grid, 'data', None))
     empty = Counter(letter_context(rows, *p, connected=linked) for p in choices if not domains.get(p))
@@ -518,34 +530,328 @@ def apply_candidates(grid, assignment, choices, cell_bits):
         grid.set(*p, cell_bits[p][mt])
 
 
+def connected_regions(cells, directions=((1, 0), (-1, 0), (0, 1), (0, -1))):
+    unseen, out = set(cells), []
+    while unseen:
+        start = min(unseen, key=lambda p: (p[1], p[0]))
+        unseen.remove(start)
+        region, todo = {start}, [start]
+        while todo:
+            x, y = todo.pop()
+            for dx, dy in directions:
+                q = x + dx, y + dy
+                if q in unseen:
+                    unseen.remove(q)
+                    region.add(q)
+                    todo.append(q)
+        out.append(region)
+    return out
+
+
+class HardObjects:
+    """Exact binary/border constraints through Glue.broken_side, never penalties."""
+    reverse = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}
+
+    def __init__(self, repo, grid, pair, cell_bits):
+        self.grid, self.bits = grid, cell_bits
+        self.glue = objects.Glue(repo, grid, pair)
+        self.cache = {}
+
+    def pair_ok(self, p, cell, q, other, side):
+        if not self.glue.objectish(cell) and not self.glue.objectish(other):
+            return True
+        key = cell, other, side
+        if key not in self.cache:
+            before, next_before = self.grid.at(*p), self.grid.at(*q)
+            try:
+                self.grid.set(*p, cell)
+                self.grid.set(*q, other)
+                self.cache[key] = (self.glue.broken_side(*p, side, cell) is None and
+                                   self.glue.broken_side(*q, self.reverse[side], other) is None)
+            finally:
+                self.grid.set(*p, before)
+                self.grid.set(*q, next_before)
+        return self.cache[key]
+
+    def boundary_ok(self, p, mt, variables):
+        cell = self.bits[p][mt]
+        for side, (dx, dy) in objects.SIDES.items():
+            q = p[0] + dx, p[1] + dy
+            if not self.grid.inside(*q):
+                if self.glue.broken_side(*p, side, cell) is not None:
+                    return False
+            elif q not in variables and not self.pair_ok(p, cell, q, self.grid.at(*q), side):
+                return False
+        return True
+
+    def validates(self, assignment):
+        saved = {p: self.grid.at(*p) for p in assignment}
+        try:
+            for p, mt in assignment.items():
+                self.grid.set(*p, self.bits[p][mt])
+            for p in assignment:
+                for side, (dx, dy) in objects.SIDES.items():
+                    if self.glue.broken_side(*p, side) is not None:
+                        return False
+                    q = p[0] + dx, p[1] + dy
+                    if (self.grid.inside(*q) and q not in assignment and
+                            self.glue.broken_side(*q, self.reverse[side]) is not None):
+                        return False
+            return True
+        finally:
+            for p, cell in saved.items():
+                self.grid.set(*p, cell)
+
+
+def hard_solve(repo, grid, pair, rows, rules, choices, cell_bits, region=None,
+               preferred=None, letters=True, step_limit=30000, time_limit=8.):
+    """Arc consistency + bounded iterative backtracking with exact hard sockets.
+
+    Outside region is frozen. Both sides of every incident edge, including a
+    frozen neighbour's side, must satisfy Glue. No soft pair score can override it.
+    """
+    region = set(choices) if region is None else set(region)
+    model = HardObjects(repo, grid, pair, cell_bits)
+    preferred = preferred or {p: grid.at(*p)[0] for p in region}
+    deadline, steps = time.monotonic() + time_limit, 0
+    domains = {p: {mt for mt in choices[p]
+                  if (not letters or rules.material(cell_bits[p][mt]) == rows[p[1]][p[0]])
+                  and model.boundary_ok(p, mt, region)} for p in region}
+    neighbours = {p: [(q, side) for side, (dx, dy) in objects.SIDES.items()
+                      if (q := (p[0] + dx, p[1] + dy)) in region] for p in region}
+    conflict = set()
+
+    def tick():
+        nonlocal steps
+        steps += 1
+        return steps <= step_limit and time.monotonic() < deadline
+
+    def compatible(p, a, q, b, side):
+        return model.pair_ok(p, cell_bits[p][a], q, cell_bits[q][b], side)
+
+    def propagate(current, queue):
+        queue = deque(queue)
+        while queue:
+            if not tick():
+                return False
+            p, q, side = queue.popleft()
+            revised = {a for a in current[p] if any(compatible(p, a, q, b, side) for b in current[q])}
+            if not revised:
+                conflict.update((p, q))
+                return False
+            if revised != current[p]:
+                current[p] = revised
+                for n, outgoing in neighbours[p]:
+                    if n != q:
+                        queue.append((n, p, model.reverse[outgoing]))
+        return True
+
+    def order(p, values):
+        freq = getattr(rules, 'freq', {})
+        return sorted(values, key=lambda mt: (
+            rules.material(cell_bits[p][mt]) != rows[p[1]][p[0]],
+            mt != preferred.get(p), -freq.get(mt, 0), mt))
+
+    initial = [(p, q, side) for p in region for q, side in neighbours[p]]
+    empty = [p for p, values in domains.items() if not values]
+    if empty or not propagate(domains, initial):
+        why = f'empty hard domain {empty[0]}' if empty else ('budget' if not tick() else 'hard contradiction')
+        return dict(ok=False, assignment={}, steps=steps, reason=why, conflict=sorted(set(empty) | conflict))
+
+    # Variables whose every option is compatible with every neighbour option are
+    # independent for hard rules; collapse them without spending a branch each.
+    for p in sorted(region, key=lambda p: (p[1], p[0])):
+        if len(domains[p]) > 1 and all(all(compatible(p, a, q, b, side)
+            for a in domains[p] for b in domains[q]) for q, side in neighbours[p]):
+            domains[p] = {order(p, domains[p])[0]}
+
+    stack = [[domains, None, None, 0]]
+    while stack:
+        current, selected, values, index = stack[-1]
+        if selected is None:
+            unresolved = [p for p in region if len(current[p]) > 1]
+            if not unresolved:
+                assignment = {p: next(iter(current[p])) for p in region}
+                if model.validates(assignment):
+                    return dict(ok=True, assignment=assignment, steps=steps, reason='', conflict=[])
+                return dict(ok=False, assignment={}, steps=steps, reason='Glue validation failed', conflict=[])
+            selected = min(unresolved, key=lambda p: (len(current[p]),
+                -sum(len(current[q]) > 1 for q, _ in neighbours[p]), p[1], p[0]))
+            values = order(selected, current[selected])
+            stack[-1][1:3] = [selected, values]
+        if index >= len(values):
+            stack.pop()
+            continue
+        stack[-1][3] += 1
+        if not tick():
+            break
+        child = {p: set(v) for p, v in current.items()}
+        child[selected] = {values[index]}
+        queue = [(q, selected, model.reverse[side]) for q, side in neighbours[selected]]
+        if propagate(child, queue):
+            stack.append([child, None, None, 0])
+    return dict(ok=False, assignment={}, steps=steps, reason='budget or no hard solution',
+                conflict=sorted(conflict))
+
+
+def restricted_vocabulary(grid, region, forced, vocab, wfc):
+    """Keep only learned windows that could fit somewhere, not invented patterns.
+
+    This exact conditioning avoids WFC's large irrelevant pattern-beam index.
+    Vocabulary.counts/key/pos_index are defined in wfc.py:87.
+    """
+    centers = {q for x, y in region for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+               if 1 <= (q := (x + dx, y + dy))[0] < grid.w - 1 and 1 <= q[1] < grid.h - 1}
+    kept = {}
+    for x, y in centers:
+        cells = [(x + dx, y + dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+        domains = [set(forced[p]) if p in region else {grid.at(*p)[0]} for p in cells]
+        pivot = min(range(9), key=lambda k: len(domains[k]))
+        for value in domains[pivot]:
+            for pattern in vocab.pos_index[pivot].get(value, ()):
+                if all(pattern[k] in domains[k] for k in range(9)):
+                    kept[pattern] = vocab.counts[pattern]
+    return wfc.Vocabulary(kept, vocab.key)
+
+
+def broken_sides(repo, grid, pair):
+    glue = objects.Glue(repo, grid, pair)
+    return [(x, y, side) for y in range(grid.h) for x in range(grid.w)
+            for side in objects.SIDES if glue.broken_side(x, y, side) is not None]
+
+
+def local_repair(repo, grid, pair, rows, rules, choices, cell_bits):
+    """Letters fixed, hard objects; try 3x3 then 5x5, never alter a b cell."""
+    before = set(objects.check(repo, grid, pair))
+    if not before:
+        return ['INFO BLOCKOUT repair skipped: no remaining broken sides']
+    notes, fixed, attempted = [], 0, set()
+    for x, y, side in broken_sides(repo, grid, pair):
+        if (x, y, side) in attempted:
+            continue
+        attempted.add((x, y, side))
+        if (x, y, side) not in broken_sides(repo, grid, pair):
+            continue
+        success = False
+        for radius in (1, 2):
+            region = {p for dx in range(-radius, radius + 1) for dy in range(-radius, radius + 1)
+                      if (p := (x + dx, y + dy)) in choices}
+            trial_choices, trial_bits = dict(choices), dict(cell_bits)
+            widening = []
+            if radius == 2:
+                for p in region:
+                    char = rows[p[1]][p[0]]
+                    expanded = dict(cell_bits[p])
+                    for cell, _ in rules.letters.get(char, {}).items():
+                        expanded.setdefault(cell[0], cell)
+                    options = [mt for mt in expanded if rules.material(expanded[mt]) == char]
+                    if set(options) - set(choices[p]):
+                        widening.append(f'INFO BLOCKOUT repair-widen {p[0]},{p[1]} context->letter '
+                                        f'candidates:{len(options)} letters:fixed')
+                    trial_choices[p], trial_bits[p] = options, expanded
+            result = hard_solve(repo, grid, pair, rows, rules, trial_choices, trial_bits,
+                                region, letters=True, step_limit=5000, time_limit=2.)
+            if not result['ok']:
+                notes.append(f'INFO BLOCKOUT repair {x},{y} {2 * radius + 1}x{2 * radius + 1} '
+                             f'no-fit steps:{result["steps"]} reason:{result["reason"]}')
+                continue
+            old = list(grid.cells)
+            previous = set(objects.check(repo, grid, pair))
+            apply_candidates(grid, result['assignment'], trial_choices, trial_bits)
+            after = set(objects.check(repo, grid, pair))
+            if after - previous or len(after) >= len(previous):
+                grid.cells[:] = old
+                notes.append(f'INFO BLOCKOUT repair {x},{y} {2 * radius + 1}x{2 * radius + 1} '
+                             'refused: no strict warning reduction or new broken side')
+                continue
+            for p in region:
+                choices[p], cell_bits[p] = trial_choices[p], trial_bits[p]
+            n = len(previous - after)
+            fixed += n
+            notes.extend(widening)
+            notes.append(f'INFO BLOCKOUT repair {x},{y} {2 * radius + 1}x{2 * radius + 1} '
+                         f'fixed:{n} steps:{result["steps"]} letters:fixed OBJECT:hard')
+            success = True
+            break
+        if not success:
+            notes.append(f'INFO BLOCKOUT repair unresolved {x},{y} side:{side} after 5x5')
+    notes.append(f'INFO BLOCKOUT repair total fixed:{fixed} remaining:{len(objects.check(repo, grid, pair))}')
+    return notes
+
+
 def forest(repo, grid, pair, rows, rules, choices, cell_bits, exclude=()):
-    """Forest WFC first, with its mutable non-building edge ring; no modal lawn."""
+    """Each connected T component is one atomic solve, never sliced sections."""
     trees = {p for p in choices if rows[p[1]][p[0]] == 'T'}
-    if not trees:
+    regions = connected_regions(trees)
+    if not regions:
         return ['INFO BLOCKOUT forest skipped: no T cells']
-    region = trees | {q for x, y in trees for dx in (-1, 0, 1) for dy in (-1, 0, 1)
-                      if (q := (x + dx, y + dy)) in choices}
-    forced = {p: choices[p] for p in region}
-    notes = [f'INFO BLOCKOUT forest region T:{len(trees)} mutable-ring:{len(region - trees)} b:frozen']
+    notes, vocab, wfc = [f'INFO BLOCKOUT forest connected-regions:{len(regions)}'], None, None
     try:
         from . import wfc
         ref = learning_reference(repo, exclude)
         vocab = wfc.learn(ref, pair, use_cache=False, exclude=tuple(exclude))
-        proposal = wfc.fill(ref, grid, pair, sorted(region, key=lambda p: (p[1], p[0])),
-                            forced=forced, vocabulary=vocab)
-        if proposal.complete and set(proposal) == region and all(mt in forced[p] for p, mt in proposal.items()):
-            apply_candidates(grid, proposal, choices, cell_bits)
-            return notes + [f'INFO BLOCKOUT forest WFC solved:{len(region)} patterns:{len(vocab)} '
-                            f'exclude:{",".join(exclude) or "none"} (final OBJECT guard pending)']
-        reason = proposal.reason or f'incomplete/invalid ({len(proposal.unsatisfied)} unresolved cells)'
-        notes.append(f'INFO BLOCKOUT forest WFC fallback: {reason}')
     except (PkError, ImportError) as exc:
         notes.append(f'INFO BLOCKOUT forest WFC fallback: {exc}')
-    targets = {p: rows[p[1]][p[0]] for p in region}
-    proposal = terrain.solve(grid, rules, targets, margin=0, choices=forced,
-                             seed={p: grid.at(*p)[0] for p in region}, passes=24, diag_weight=.5)
-    apply_candidates(grid, proposal, choices, cell_bits)
-    return notes + [f'INFO BLOCKOUT forest seen-pair fallback solved:{len(region)} (final OBJECT guard pending)']
+    for number, component in enumerate(regions, 1):
+        region = component | {q for x, y in component for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                              if (q := (x + dx, y + dy)) in choices and q not in trees}
+        forced = {p: [mt for mt in choices[p] if rules.material(cell_bits[p][mt]) == rows[p[1]][p[0]]]
+                  for p in region}
+        if any(not v for v in forced.values()):
+            notes.append(f'INFO BLOCKOUT forest region:{number} no letter-fixed domain; coherent seed retained')
+            continue
+        proposal, kind = None, 'seen-pair fallback'
+        if vocab is not None:
+            try:
+                relevant = restricted_vocabulary(grid, region, forced, vocab, wfc)
+                result = wfc.fill(ref, grid, pair, sorted(region, key=lambda p: (p[1], p[0])),
+                                  forced=forced, vocabulary=relevant)
+                if result.complete and set(result) == region and all(mt in forced[p] for p, mt in result.items()):
+                    proposal, kind = result, 'WFC'
+                else:
+                    notes.append(f'INFO BLOCKOUT forest region:{number} WFC fallback '
+                                 f'unresolved:{len(result.unsatisfied)} reason:{result.reason}')
+            except PkError as exc:
+                notes.append(f'INFO BLOCKOUT forest region:{number} WFC fallback: {exc}')
+        if proposal is None:
+            proposal = terrain.solve(grid, rules, {p: rows[p[1]][p[0]] for p in region},
+                                     margin=0, choices=forced,
+                                     seed={p: grid.at(*p)[0] if grid.at(*p)[0] in forced[p] else forced[p][0]
+                                           for p in region}, passes=24, diag_weight=.5)
+        hard = hard_solve(repo, grid, pair, rows, rules, forced, cell_bits, region,
+                          preferred=proposal, letters=True)
+        if hard['ok']:
+            apply_candidates(grid, hard['assignment'], choices, cell_bits)
+            notes.append(f'INFO BLOCKOUT forest {kind} solved:{len(region)} region:{number}/{len(regions)} '
+                         f'T:{len(component)} steps:{hard["steps"]} OBJECT:hard')
+        else:
+            notes.append(f'INFO BLOCKOUT forest region:{number} refused:{hard["reason"]} '
+                         'coherent seed retained; object rules never relaxed')
+    return notes
+
+
+def ledge_rows(repo, grid, pair, rows, rules, choices, cell_bits):
+    notes, count = [], 0
+    all_ledges = {p for p in choices if rows[p[1]][p[0]] in LEDGE_STEP}
+    for symbol in 'v^<>':
+        direction = ((1, 0), (-1, 0)) if symbol in 'v^' else ((0, 1), (0, -1))
+        for component in connected_regions({p for p in all_ledges if rows[p[1]][p[0]] == symbol}, direction):
+            count += 1
+            region = component | {q for x, y in component for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                                  if (q := (x + dx, y + dy)) in choices and q not in all_ledges
+                                  and rows[q[1]][q[0]] != 'T'}
+            result = hard_solve(repo, grid, pair, rows, rules, choices, cell_bits, region, letters=True)
+            if result['ok']:
+                apply_candidates(grid, result['assignment'], choices, cell_bits)
+                x, y = min(component)
+                notes.append(f'INFO BLOCKOUT ledge row {x},{y} symbol:{symbol} length:{len(component)} '
+                             f'solved:{len(region)} steps:{result["steps"]} OBJECT:hard')
+            else:
+                notes.append(f'INFO BLOCKOUT ledge row symbol:{symbol} cells:{len(component)} '
+                             f'refused:{result["reason"]}; coherent seed retained')
+    if not count:
+        notes.append('INFO BLOCKOUT ledge rows skipped: none')
+    return notes
 
 
 def reach_losses(before, after, pair):
@@ -587,19 +893,34 @@ def tile(repo, grid, pair, rows, exclude=()):
         # cells under events, receives a legal context seed and participates.
         seed = {p: grid.at(*p)[0] if grid.at(*p)[0] in values else values[0]
                 for p, values in active.items()}
-        apply_candidates(grid, seed, active, cell_bits)
+        coherent = hard_solve(repo, grid, pair, rows, rules, active, cell_bits,
+                              preferred=seed, letters=False, step_limit=50000, time_limit=12.)
+        if coherent['ok']:
+            apply_candidates(grid, coherent['assignment'], active, cell_bits)
+            out.append(f'INFO BLOCKOUT hard coherent seed solved:{len(active)} '
+                       f'steps:{coherent["steps"]} OBJECT:hard')
+        else:
+            out.append(f'INFO BLOCKOUT hard coherent seed refused:{coherent["reason"]} '
+                       'no invalid assignment applied')
         out.append(f'INFO BLOCKOUT solve editable:{len(active)} '
                    f'frozen-b:{grid.w * grid.h - len(choices)} (no modal-lawn or event freeze)')
         out.extend(forest(repo, grid, pair, rows, rules, active, cell_bits, exclude))
-        rest = {p: rows[p[1]][p[0]] for p in active if rows[p[1]][p[0]] != 'T'}
+        out.extend(ledge_rows(repo, grid, pair, rows, rules, active, cell_bits))
+        rest = {p: rows[p[1]][p[0]] for p in active if rows[p[1]][p[0]] not in 'Tv^<>'}
         if rest:
             picked = terrain.solve(grid, rules, rest, margin=0,
                                    choices={p: active[p] for p in rest},
                                    seed={p: grid.at(*p)[0] for p in rest}, passes=24, diag_weight=.5)
-            apply_candidates(grid, picked, active, cell_bits)
-            out.append(f'INFO BLOCKOUT rest solved:{len(rest)} (including lawn/forest joins)')
+            hard = hard_solve(repo, grid, pair, rows, rules, active, cell_bits,
+                              set(rest), preferred=picked, letters=True)
+            if hard['ok']:
+                apply_candidates(grid, hard['assignment'], active, cell_bits)
+                out.append(f'INFO BLOCKOUT rest solved:{len(rest)} steps:{hard["steps"]} OBJECT:hard')
+            else:
+                out.append(f'INFO BLOCKOUT rest refused:{hard["reason"]}; coherent seed retained')
         else:
             out.append('INFO BLOCKOUT rest skipped: no non-tree editable cells')
+        out.extend(local_repair(repo, grid, pair, rows, rules, active, cell_bits))
     else:
         out.append('INFO BLOCKOUT forest/rest skipped: no non-door candidates for any editable cell')
     out.append('INFO BLOCKOUT unrestricted terrain auto skipped: joins already solved in context domains')
@@ -612,7 +933,7 @@ def tile(repo, grid, pair, rows, exclude=()):
     open_bank = [(x, y) for y, row in enumerate(actual) for x, char in enumerate(row) if char == '~'
                  and any(grid.inside(nx, ny) and actual[ny][nx] == '.'
                          for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)))]
-    out.extend(added[:8])
+    out.extend(added)
     out.extend(f'WARN reach {entrance} lost:{n}' for entrance, n in list(losses.items())[:8])
     if not added:
         out.append('INFO OBJECT new:0')

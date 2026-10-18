@@ -1288,3 +1288,41 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   reach uses original vanilla and loses no cells. No game-map data writes or target relaxation.
 - STOP at the object target miss. INFO skipped: remaining four rebuilds, coastal map, Parts 2-3,
   v3 table and previously passed 10-map round trips on this resumed run. Part 1 remains WIP.
+
+## Blockout hard-object components and bounded local repair (2026-10-18, Part 1 WIP)
+- Owner revision: widening relaxes context only, never object sockets. Exact Glue.broken_side
+  checks run in both directions against solved/frozen neighbours and unconnected borders;
+  connected sides still use Glue.neighbour. Exhausted support widens blocking neighbours'
+  contexts or reports a hard contradiction; no candidate gets an object exemption.
+- Added arc consistency and bounded backtracking for a coherent full-map seed and for all
+  WFC/pair proposals. Each connected T component is atomic (not sectioned); each horizontal
+  v/^ or vertical </> ledge row is atomic. A failed proposal leaves prior tiles untouched.
+  Forest WFC vocabulary is conditioned on domains, not invented or learned from the held-out
+  map. Seen-pair fallback remains soft preference, clamped by exact hard-object validation.
+- Added final 3x3 then 5x5 local repair with fixed letters, hard object rules, and bounded
+  search. Only repairs reducing warning identities without introducing any are accepted.
+  Every attempted window, fixed count, context widening and unresolved side is reported.
+- Command: python tools/pk/tests/test_blockout.py -> 37 tests PASS. New tests exercise forest
+  phase consistency, frozen-neighbour checks in both directions, broad-domain hard rejection,
+  connected-component/ledge grouping, 3x3 repair and growth to 5x5. Command:
+  python release/silvaiee/tools/pk/tests/test_blockout.py -> 37 run, OK (skipped=2), explicit
+  INFO for the public checkout's absent optional WFC. Public benchmark not claimed as tested.
+- Command: python tools/pk/tests/test_blockout.py --benchmark --rebuilds-only:
+  Route1_Frlg PASS: 960/960=100.00% letters, new_OBJECT:0, original reach_lost:0, open_bank:0.
+  Initial exact/four/letter:856/75/29; 116 cells widened in 161 steps; final levels
+  exact/four/letter/any:844/75/37/4. Coherent seed:960 cells; four connected T components
+  (one WFC and three seen-pair proposals) and ten ledge rows hard-validated. Repair explicitly
+  skipped because no broken sides remained. The render still has fence-like right-wall tiles
+  classified as T: these targets do not establish exact graphical reconstruction.
+- The same command then stopped at Route22_Frlg FAIL: 210/1152=18.23% letters (<95%),
+  new_OBJECT:13 (target 0), original reach_lost:0, open_bank:3. Hard support contradiction
+  at (4,0), pattern ***/rrb/rrb beside frozen b; coherent seed/rest refused. Local repair
+  fixed 0 and left 13 broken sides after 3x3/5x5 attempts. No invalid search assignment
+  was applied; the partial in-memory proposal still fails the unchanged final guards.
+- Artifacts: .pk/render/blockout_Route1_Frlg.png and .txt; blockout_Route22_Frlg.png and .txt.
+  Original left, proposal right. Full audits persist every widened coordinate and repair.
+  Benchmark/header reach compares with original vanilla; generic WARN reach compares with
+  the walkable wipe. No game-map writes, ROM builds, pushes or target relaxation.
+- STOP at the first target miss. INFO skipped: remaining three rebuilds, coastal map,
+  Parts 2-3 and v3 table; earlier 10/10 round trips were explicitly skipped on this resumed
+  run (their previous 13812/13812 pass is unchanged). Part 1 remains WIP.

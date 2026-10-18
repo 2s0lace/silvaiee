@@ -288,14 +288,17 @@ class Forest(unittest.TestCase):
         fill.complete = complete
         if not complete:
             fill.unsatisfied = [(1, 1)]
+        self.rules = SimpleNamespace(material=lambda cell: 'T' if cell[0] == 1 else '.', freq={})
+        self.vocab = wfc.Vocabulary({(8, 1, 9, 9, 1, 9, 9, 1, 9): 1}, 'test')
         return grid, rows, choices, bits, fill
 
     def test_wfc_full_forest_plus_mutable_lawn_b_frozen(self):
         grid, rows, choices, bits, fill = self.setup_fill()
         with patch.object(blockout, 'learning_reference', return_value=object()), \
-             patch('pk.maps.wfc.learn', return_value=[1]) as learn, \
-             patch('pk.maps.wfc.fill', return_value=fill) as solve:
-            notes = blockout.forest(object(), grid, object(), rows, object(), choices, bits,
+             patch('pk.maps.wfc.learn', return_value=self.vocab) as learn, \
+             patch('pk.maps.wfc.fill', return_value=fill) as solve, \
+             patch.object(blockout, 'hard_solve', return_value=dict(ok=True, assignment=dict(fill), steps=1)):
+            notes = blockout.forest(object(), grid, object(), rows, self.rules, choices, bits,
                                     exclude=('Route1_Frlg',))
         self.assertEqual(learn.call_args.kwargs['exclude'], ('Route1_Frlg',))
         self.assertFalse(learn.call_args.kwargs['use_cache'])
@@ -308,10 +311,11 @@ class Forest(unittest.TestCase):
     def test_incomplete_wfc_uses_context_restricted_pair_fallback(self):
         grid, rows, choices, bits, fill = self.setup_fill(False)
         with patch.object(blockout, 'learning_reference', return_value=object()), \
-             patch('pk.maps.wfc.learn', return_value=[1]), \
+             patch('pk.maps.wfc.learn', return_value=self.vocab), \
              patch('pk.maps.wfc.fill', return_value=fill), \
-             patch.object(blockout.terrain, 'solve', return_value=dict(fill)) as solve:
-            notes = blockout.forest(object(), grid, object(), rows, object(), choices, bits)
+             patch.object(blockout.terrain, 'solve', return_value=dict(fill)) as solve, \
+             patch.object(blockout, 'hard_solve', return_value=dict(ok=True, assignment=dict(fill), steps=1)):
+            notes = blockout.forest(object(), grid, object(), rows, self.rules, choices, bits)
         self.assertEqual(solve.call_args.kwargs['margin'], 0)
         self.assertEqual(solve.call_args.kwargs['choices'], choices)
         self.assertTrue(any('seen-pair fallback solved:8' in n for n in notes))
@@ -350,6 +354,129 @@ class Forest(unittest.TestCase):
             with patch.object(blockout.objects, 'Glue', return_value=glue):
                 blockout.supported_contexts(None, grid, None, rows, choices, bits)
             self.assertEqual(bool(choices[1, 0]), connected)
+
+
+class HardConstraints(unittest.TestCase):
+    class Grid:
+        def __init__(self, w=2, h=6):
+            self.w, self.h, self.data = w, h, {}
+            self.cells = [(1 if y % 2 == 0 else 2, 1, 0) for y in range(h) for x in range(w)]
+
+        def at(self, x, y):
+            return self.cells[y * self.w + x]
+
+        def set(self, x, y, cell):
+            self.cells[y * self.w + x] = cell
+
+        def inside(self, x, y):
+            return 0 <= x < self.w and 0 <= y < self.h
+
+    class Glue:
+        """Tiny learned-object contract: crown/trunk alternate; rows agree."""
+        def __init__(self, repo, grid, pair):
+            self.grid = grid
+
+        def objectish(self, cell):
+            return cell[0] in (1, 2)
+
+        def broken_side(self, x, y, side, cell=None):
+            cell = cell or self.grid.at(x, y)
+            dx, dy = blockout.objects.SIDES[side]
+            q = x + dx, y + dy
+            if not self.grid.inside(*q):
+                return None
+            a, b = cell[0], self.grid.at(*q)[0]
+            if a in (1, 2) and b in (1, 2):
+                return True if (a != b if dx else a == b) else None
+            if (a == 1 and side == 'S') or (a == 2 and side == 'N'):
+                return True
+            return None
+
+    def fixture(self, h=6):
+        grid = self.Grid(h=h)
+        rows = ['TT'] * h
+        choices = {(x, y): [1, 2] for y in range(h) for x in range(2)}
+        bits = {p: {1: (1, 1, 0), 2: (2, 1, 0)} for p in choices}
+        rules = SimpleNamespace(material=lambda cell: 'T' if cell[0] in (1, 2) else '.',
+                                freq={1: 10, 2: 10}, letters={'T': Counter({(1, 1, 0): 10, (2, 1, 0): 10})})
+        return grid, rows, choices, bits, rules
+
+    def warnings(self, repo, grid, pair):
+        glue = self.Glue(repo, grid, pair)
+        return [f'WARN OBJECT @{x},{y} {side}' for y in range(grid.h) for x in range(grid.w)
+                for side in blockout.objects.SIDES if glue.broken_side(x, y, side) is not None]
+
+    def test_whole_connected_region_keeps_two_row_rhythm(self):
+        grid, rows, choices, bits, rules = self.fixture()
+        for x in range(2):
+            grid.set(x, 3, (1, 1, 0))
+        original = list(grid.cells)
+        with patch.object(blockout.objects, 'Glue', self.Glue):
+            result = blockout.hard_solve(None, grid, None, rows, rules, choices, bits)
+        self.assertTrue(result['ok'], result)
+        self.assertEqual(grid.cells, original)  # search itself never mutates
+        blockout.apply_candidates(grid, result['assignment'], choices, bits)
+        self.assertEqual(self.warnings(None, grid, None), [])
+
+    def test_no_object_rule_escape_for_broad_but_incompatible_candidates(self):
+        grid, rows, choices, bits, rules = self.fixture(h=2)
+        choices = {p: [1] for p in choices}
+        original = list(grid.cells)
+        with patch.object(blockout.objects, 'Glue', self.Glue):
+            result = blockout.hard_solve(None, grid, None, rows, rules, choices, bits, letters=False)
+        self.assertFalse(result['ok'])
+        self.assertEqual(grid.cells, original)
+
+    def test_solved_neighbour_is_hard_boundary_in_both_directions(self):
+        grid, rows, choices, bits, rules = self.fixture()
+        with patch.object(blockout.objects, 'Glue', self.Glue):
+            result = blockout.hard_solve(None, grid, None, rows, rules, choices, bits, {(0, 1)})
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['assignment'], {(0, 1): 2})
+
+    def test_local_repair_fixes_3x3_without_changing_letters(self):
+        grid, rows, choices, bits, rules = self.fixture()
+        for x in range(2):
+            grid.set(x, 2, (2, 1, 0))
+        with patch.object(blockout.objects, 'Glue', self.Glue), \
+             patch.object(blockout.objects, 'check', side_effect=self.warnings):
+            notes = blockout.local_repair(None, grid, None, rows, rules, choices, bits)
+        self.assertEqual(self.warnings(None, grid, None), [])
+        self.assertTrue(any('3x3 fixed:' in row for row in notes), notes)
+        self.assertTrue(all(rules.material(cell) == 'T' for cell in grid.cells))
+
+    def test_local_repair_grows_to_5x5_when_phase_conflict_spans_two_rows(self):
+        grid, rows, choices, bits, rules = self.fixture(h=8)
+        for x in range(2):
+            grid.set(x, 3, (1, 1, 0))
+            grid.set(x, 4, (2, 1, 0))
+        with patch.object(blockout.objects, 'Glue', self.Glue), \
+             patch.object(blockout.objects, 'check', side_effect=self.warnings):
+            notes = blockout.local_repair(None, grid, None, rows, rules, choices, bits)
+        self.assertEqual(self.warnings(None, grid, None), [])
+        self.assertTrue(any('3x3 no-fit' in row for row in notes), notes)
+        self.assertTrue(any('5x5 fixed:' in row for row in notes), notes)
+        self.assertTrue(all(rules.material(cell) == 'T' for cell in grid.cells))
+
+    def test_components_do_not_slice_a_connected_column(self):
+        cells = {(0, y) for y in range(20)} | {(3, y) for y in range(4)}
+        regions = blockout.connected_regions(cells)
+        self.assertEqual(sorted(map(len, regions)), [4, 20])
+        self.assertEqual(set().union(*regions), cells)
+
+    def test_each_ledge_row_is_one_joint_solve(self):
+        grid = self.Grid(w=5, h=3)
+        rows = ['vv.vv', '.....', 'vv...']
+        choices = {(x, y): [1] for y in range(3) for x in range(5)}
+        bits = {p: {1: (1, 1, 0)} for p in choices}
+        calls = []
+        def solved(repo, grid, pair, rows, rules, choices, bits, region, **kwargs):
+            calls.append({p for p in region if rows[p[1]][p[0]] == 'v'})
+            return dict(ok=True, assignment={p: 1 for p in region}, steps=1)
+        with patch.object(blockout, 'hard_solve', side_effect=solved):
+            blockout.ledge_rows(None, grid, None, rows, None, choices, bits)
+        self.assertEqual(sorted(map(len, calls)), [2, 2, 2])
+        self.assertEqual(set().union(*calls), {(0, 0), (1, 0), (3, 0), (4, 0), (0, 2), (1, 2)})
 
 
 def benchmark(rebuilds_only=False):
