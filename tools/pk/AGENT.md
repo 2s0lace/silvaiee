@@ -7,8 +7,7 @@ Output: first line OK or ERR CODE; MORE n = next --offset. --dry-run writes noth
 Every write is one journaled transaction: pk log | pk undo [n] (undo again = redo). pk help errors.
 MAP = exact directory (PalletTown_Frlg), MAP_* id or unique fuzzy name. Ambiguity lists candidates.
 METATILE = 0x2A3 | 675 | name given with pk meta name.
-pk find "query" [--kind map|text|script|flag|var|trainer|gfx|behavior|layout|tileset|music]
-pk refs EXACT_LABEL_OR_CONSTANT
+pk find "query" [--kind map|text|script|flag|var|trainer|gfx|behavior|layout|tileset|music] | pk refs EXACT_LABEL_OR_CONSTANT
 pk map ls [filter] | pk map info MAP
 pk map show MAP [--rect x,y,WxH] [--exact] [--layer coll|elev|all] [--stamps] [--roles] (help map: symbols)
 pk map lint MAP (ugliness score: seams stairs rare rects empty; 0 is clean)
@@ -25,6 +24,7 @@ pk terrain river MAP x,y x,y [width=2] | ledge | forest --stamp tree | bake | le
 pk stamp extract MAP x,y,WxH name | from-tileset SET.pkt OBJ.px name | mine PAIR [--min-count 3] [--apply] | ls
 pk stamp place MAP name x,y
 pk kit index | find [--feature F --top C --bottom C --left C --right C --size WxH --pair P --sheet] | fit MAP x,y,WxH (help kit)
+pk shape find --kind pond|cove|sandbar|beach|island|grove|tallgrass [--size WxH --sheet] | place MAP KIND_OR_ID x,y (help shape)
 pk bp check|plan|render|apply MAP | pk bp world | pk bp export MAP (help bp: blueprint format)
 pk tileset build art/X/tileset.pkt | pk tileset export MAP name | pk px show|check|render FILE.px
 pk sprite show|export GFX | pk sprite build FILE.px name --like GFX (NPC overworld sprites)

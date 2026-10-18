@@ -198,6 +198,10 @@ def dispatch(repo, tx, argv):
             raise PkError('PARSE', 'usage: pk kit index | find [filters] | fit MAP x,y,WxH')
         from pk.maps import kit as map_kit
         result = map_kit.command(repo, args, opts)
+    elif noun == 'shape':
+        args, opts = options(tail, values=('kind', 'size', 'limit', 'flip'), flags=('sheet',))
+        from pk.maps import shapes as map_shapes
+        result = map_shapes.command(repo, tx, args, opts)
     else:
         raise PkError('PARSE', f'unsupported command {noun}; use pk help')
     return result, dict(tx.writes)
@@ -212,6 +216,7 @@ def main(argv=None, stdin=None, root=None):
     try:
         repo = Repo(root) if root else Repo.discover()
         tx = Transaction(repo, ' '.join(argv) or 'help')
+        tx.dry_run = dry_run
         state = Repo(repo.root, tx)
         if argv and argv[0] == 'build':
             args, opts = options(argv[1:], flags=('release', 'no-check'))

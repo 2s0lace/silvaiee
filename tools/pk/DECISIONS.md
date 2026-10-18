@@ -1144,3 +1144,20 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   Only 2 distinct routes (target 3): MISS. STOP, targets unchanged, no Pallet continuation.
 - 26/28 unit tests pass; the original-map zero-seam assertion and three-option assertion still fail.
   This is a WIP revision, not acceptance. Updated .pk/render/path_route1.png and tasks/sol_path_report.md.
+
+## Owner pond review: exact portable source banks (2026-10-18, Codex)
+- Water placement no longer re-solves the mask/bank materials. Copy every source water tuple and the
+  complete eight-neighbour source bank, including collision/elevation; require primary IDs, matching
+  primary tileset/version and a full source/destination bank footprint. Refuse secondary source tiles
+  with coordinates/IDs. Directional water-shape flips are refused rather than copying wrong-facing art.
+- Only the outer lawn ring is solved, with the measured destination lawn; the copied patch is frozen.
+  Added an outline check requiring a non-water/non-lawn bank neighbour and rejecting every open
+  lawn-facing side. Tests cover exact copying, frozen-bank cleanup, refusal rollback and missing banks.
+- Same five-pond benchmark, no replacements: all five NOT PLACEABLE. Secondary water/bank counts are
+  0/4, 6/20, 10/20, 5/3, 16/2. All preserve pending writes/map cells, add 0 object warnings, reach unchanged.
+  Placement seams/fidelity/bank checks are N/A, not claimed as passes. Auto controls remain 13/17/22/24/35.
+- The catalogue still has 45 ponds (only 4 wholly portable patches), 46 coves, 903 grove candidates,
+  44 islands, 0 sandbars, 46 beaches, 239 tallgrass. Cache version 5 includes bank portability.
+  21 checks pass; five-placement acceptance remains failing (0/5 placed). STOP, targets unchanged.
+- .pk/render/shape_ponds.png is now explicitly a SOURCE / NOT PLACEABLE audit with secondary bank cells
+  outlined magenta. Details: tools/pk/tasks/sol_shape_report.md. No game-map writes were committed.
