@@ -1161,3 +1161,21 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   21 checks pass; five-placement acceptance remains failing (0/5 placed). STOP, targets unchanged.
 - .pk/render/shape_ponds.png is now explicitly a SOURCE / NOT PLACEABLE audit with secondary bank cells
   outlined magenta. Details: tools/pk/tasks/sol_shape_report.md. No game-map writes were committed.
+
+## Layout blockout Part 1 prototype: stopped on fixed-legend incompatibility (2026-10-18, Codex)
+- Added experimental blockout parsing/export/check and in-memory guarded tiling. Physical classes,
+  tile cards and a provisional rendered-palette heuristic decide letters, never metatile names/tags.
+  Visual tree/building/road/flower classification is not validated. Unchanged imports preserve tuples.
+- Own PkBlock*_Frlg drafts only; material candidates come from vanilla_outdoor, whole small object
+  windows require uncut vanilla constraints. Shape/path fallbacks and missing joins/measures print INFO.
+  These tiling paths are unaccepted and were not reached by the acceptance benchmark.
+- Command: python tools/pk/tests/test_blockout.py -> 10 tests passed. Command:
+  python tools/pk/tests/test_blockout.py --benchmark -> Route1 960/960, Route22 1152/1152,
+  PalletTown 480/480, Route3 1680/1680, all exact original tiles. The next map,
+  OneIsland_KindleRoad_Frlg, raises PARSE: west-facing ledge 0x085 cannot be represented by fixed
+  l=ledge_s. Four maps passed; the ten-map 100% target is NOT met. STOP; no reinterpretation of l.
+- INFO skipped after the first miss: all five wiped retiles, coastal map/render, Part 2 library,
+  Part 3 calibration and read-only v3 table. No blockout PNG exists. Global vanilla 3x3 checks also
+  encounter this legend gap. No game-map writes, ROM build, blueprint apply or push.
+- Part 1 remains WIP. Owner direction is needed on faithful representation of non-south ledges;
+  even resolving that does not establish classifier/tiler quality or any other acceptance target.

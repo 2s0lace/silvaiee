@@ -92,8 +92,11 @@ def dispatch(repo, tx, argv):
                                            'anchor', 'fill', 'size', 'tilesets', 'type', 'like', 'music', 'group', 'out', 'scale',
                                            'into', 'viewport', 'compare', 'ring', 'max-steps'),
                              flags=('exact', 'no-events', 'fork-layout', 'drop-out-of-bounds', 'stamps', 'snapshot',
-                                    'all', 'grid', 'repair', 'annotate', 'roles'))
-        if args and args[0] == 'paintover' and len(args) == 3:
+                                    'all', 'grid', 'repair', 'annotate', 'roles', 'export', 'check'))
+        if args and args[0] == 'blockout':
+            from pk.maps import blockout
+            result = blockout.command(repo, tx, args, opts)
+        elif args and args[0] == 'paintover' and len(args) == 3:
             result = map_paintover.command(repo, tx, args, opts)
         elif args and args[0] == 'polish' and len(args) == 2:
             result = map_polish.command(repo, tx, args[1], opts)

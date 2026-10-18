@@ -17,7 +17,7 @@ pk map at MAP x,y | pk map paint MAP x,y[,WxH] METATILE | fill | line | grid | c
 pk map paintover MAP IMAGE [--into NEW_MAP] (real metatiles back from a painted image; matching cells frozen)
 pk map resize MAP --add right=8,bottom=4 [--fill extend|border|terrain|METATILE]
 (resize moves events, script coordinates, connections and heal spots; grow right/bottom when possible)
-pk map export MAP [--out file] | pk map import MAP file (lossless text: grid, coll/elev, border.bin)
+pk map export MAP [--out file] | import MAP file (lossless) | blockout MAP --export|FILE [--check] (experimental; help blockout)
 pk map extend-to MAP NEIGHBOUR | pk map new NAME --size WxH --tilesets P,S --fill METATILE
 pk terrain brush MAP rect|circle|path ... MATERIAL (water, grass, sand, ground, solid, ledge_s, tags)
 pk terrain river MAP x,y x,y [width=2] | ledge | forest --stamp tree | bake | learn | show | auto MAP x,y,WxH [--options N|--pick N]
