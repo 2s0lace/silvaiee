@@ -28,22 +28,47 @@ LEDGE_SYMBOL = {'ledge_s': 'v', 'ledge_n': '^', 'ledge_w': '<', 'ledge_e': '>'}
 LEDGE_STEP = {'v': (0, 1), '^': (0, -1), '<': (-1, 0), '>': (1, 0)}
 
 
+class Rows(list):
+    """Letter rows, plus an optional `elevation` layer (one hex digit per cell, or None). Letters can't say
+    how high a path is: on One Island Kindle Road a plateau path at elevation 4 rebuilt at 3 and was cut off
+    from the rest (306 cells unreachable with every letter right)."""
+    elevation = None
+
+
+ELEVATION_HEADER = 'elevation'
+
+
 def parse(text, w, h):
-    rows = text.splitlines()
-    if rows[:2] != [HEADER, LEGEND]:
+    lines = text.splitlines()
+    if lines[:2] != [HEADER, LEGEND]:
         raise PkError('PARSE', 'expected blockout 1 and the fixed legend (pk help blockout)')
-    rows = rows[2:]
-    if len(rows) != h or any(len(row) != w for row in rows):
+    lines = lines[2:]
+    elevation = None
+    if ELEVATION_HEADER in lines:
+        k = lines.index(ELEVATION_HEADER)
+        lines, elevation = lines[:k], lines[k + 1:]
+        if len(elevation) != h or any(len(row) != w for row in elevation):
+            raise PkError('BOUNDS', f'elevation layer must have exactly {h} rows of {w} hex digits')
+        for y, row in enumerate(elevation):
+            for x, char in enumerate(row):
+                if char not in '0123456789abcdefABCDEF':
+                    raise PkError('PARSE', f'elevation must be one hex digit per cell, got {char!r} at {x},{y}')
+    if len(lines) != h or any(len(row) != w for row in lines):
         raise PkError('BOUNDS', f'blockout must have exactly {h} rows of {w} cells')
-    for y, row in enumerate(rows):
+    for y, row in enumerate(lines):
         for x, char in enumerate(row):
             if char not in LETTERS:
                 raise PkError('PARSE', f'unknown blockout letter {char!r} at {x},{y}')
+    rows = Rows(lines)
+    rows.elevation = [row.upper() for row in elevation] if elevation else None
     return rows
 
 
 def serialize(rows):
-    return '\n'.join([HEADER, LEGEND, *rows]) + '\n'
+    body = [HEADER, LEGEND, *rows]
+    if getattr(rows, 'elevation', None):
+        body += [ELEVATION_HEADER, *rows.elevation]
+    return '\n'.join(body) + '\n'
 
 
 def fence_card(card):
@@ -133,6 +158,7 @@ class Classifier:
 
     def export(self, grid):
         rows = [[self.letter(grid.at(x, y)) for x in range(grid.w)] for y in range(grid.h)]
+        elevation = [''.join(f'{grid.at(x, y)[2]:X}' for x in range(grid.w)) for y in range(grid.h)]
         # A building is the whole structure, not just the cells next to its door: wall-class cells
         # (r/T/n) connected to a 'b' cell whose metatile is secondary-specific and used by no other
         # vanilla layout of the pair can't be rebuilt from other maps, so they count as 'b' (frozen).
@@ -147,7 +173,9 @@ class Classifier:
                 if 0 <= nx < grid.w and 0 <= ny < grid.h and rows[ny][nx] in OBJECT_LETTERS                         and unique(grid.at(nx, ny)[0]):
                     rows[ny][nx] = 'b'
                     queue.append((nx, ny))
-        return [''.join(row) for row in rows]
+        out = Rows(''.join(row) for row in rows)
+        out.elevation = elevation
+        return out
 
 
 def reference(repo):
@@ -613,10 +641,11 @@ class HardObjects:
     """Exact binary/border constraints through Glue.broken_side, never penalties."""
     reverse = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}
 
-    def __init__(self, repo, grid, pair, cell_bits):
+    def __init__(self, repo, grid, pair, cell_bits, free=frozenset()):
         self.grid, self.bits = grid, cell_bits
         self.glue = objects.Glue(repo, grid, pair)
         self.cache = {}
+        self.free = free          # not-yet-solved cells outside the region: no constraint from them
 
     def pair_ok(self, p, cell, q, other, side):
         if not self.glue.objectish(cell) and not self.glue.objectish(other):
@@ -641,7 +670,7 @@ class HardObjects:
             if not self.grid.inside(*q):
                 if self.glue.broken_side(*p, side, cell) is not None:
                     return False
-            elif q not in variables and not self.pair_ok(p, cell, q, self.grid.at(*q), side):
+            elif q not in variables and q not in self.free and not self.pair_ok(p, cell, q, self.grid.at(*q), side):
                 return False
         return True
 
@@ -652,9 +681,11 @@ class HardObjects:
                 self.grid.set(*p, self.bits[p][mt])
             for p in assignment:
                 for side, (dx, dy) in objects.SIDES.items():
+                    q = p[0] + dx, p[1] + dy
+                    if q in self.free:
+                        continue
                     if self.glue.broken_side(*p, side) is not None:
                         return False
-                    q = p[0] + dx, p[1] + dy
                     if (self.grid.inside(*q) and q not in assignment and
                             self.glue.broken_side(*q, self.reverse[side]) is not None):
                         return False
@@ -665,14 +696,14 @@ class HardObjects:
 
 
 def hard_solve(repo, grid, pair, rows, rules, choices, cell_bits, region=None,
-               preferred=None, letters=True, step_limit=30000, time_limit=8.):
+               preferred=None, letters=True, step_limit=30000, time_limit=8., free=frozenset()):
     """Arc consistency + bounded iterative backtracking with exact hard sockets.
 
     Outside region is frozen. Both sides of every incident edge, including a
     frozen neighbour's side, must satisfy Glue. No soft pair score can override it.
     """
     region = set(choices) if region is None else set(region)
-    model = HardObjects(repo, grid, pair, cell_bits)
+    model = HardObjects(repo, grid, pair, cell_bits, free)
     preferred = preferred or {p: grid.at(*p)[0] for p in region}
     deadline, steps = time.monotonic() + time_limit, 0
     domains = {p: {mt for mt in choices[p]
@@ -1013,6 +1044,91 @@ def reach_losses(before, after, pair):
 
 
 
+SECTION = 24          # window size for sectioned solving
+SECTION_STEP = 16     # stride: windows overlap by 8 cells
+SECTION_MIN = 8       # a failing window is split down to this size
+
+
+def sectioned_solve(repo, grid, pair, rows, rules, domains, active, cell_bits, cells, preferred,
+                    letters, label):
+    """Solve `cells` window by window (top to bottom, left to right). Each window sees cells already
+    solved as fixed and cells not yet reached as free; a failing window is split into quarters down to
+    SECTION_MIN. Solved windows are applied at once. Returns (solved cells, notes)."""
+    cells = set(cells)
+    if not cells:
+        return set(), []
+    xs = [x for x, _ in cells]
+    ys = [y for _, y in cells]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    solved, notes, failed = set(), [], []
+
+    def starts(a, b, size, step):
+        """Window starts covering a..b; the last window always ends exactly at b."""
+        if b - a + 1 <= size:
+            return [a]
+        out = list(range(a, b - size + 2, step))
+        if out[-1] != b - size + 1:
+            out.append(b - size + 1)
+        return out
+
+    def windows(ax, ay, bx, by, size, step):
+        for wy in starts(ay, by, size, step):
+            for wx in starts(ax, bx, size, step):
+                yield wx, wy, min(bx, wx + size - 1), min(by, wy + size - 1)
+
+    def attempt(ax, ay, bx, by, size):
+        region = {p for p in cells if ax <= p[0] <= bx and ay <= p[1] <= by}
+        if not region:
+            return True
+        free = frozenset(cells - region - solved)
+        want = {p: grid.at(*p)[0] if p in solved else preferred.get(p) for p in region}
+        result = hard_solve(repo, grid, pair, rows, rules, domains, cell_bits, region,
+                            preferred={p: v for p, v in want.items() if v is not None}, letters=letters,
+                            step_limit=20000, time_limit=4., free=free)
+        if result['ok']:
+            apply_candidates(grid, result['assignment'], active, cell_bits)
+            solved.update(region)
+            return True
+        if size <= SECTION_MIN:
+            failed.append((ax, ay, bx, by, result['reason']))
+            return False
+        half = max(SECTION_MIN, size // 2)
+        ok = True
+        for sub in windows(ax, ay, bx, by, half, half):
+            ok &= attempt(*sub, half)
+        return ok
+
+    for win in windows(x0, y0, x1, y1, SECTION, SECTION_STEP):
+        attempt(*win, SECTION)
+    left = cells - solved
+    if left:
+        # Remnants no window could solve under hard rules (e.g. a tiny rock bump in a beach with no
+        # vanilla context left after leave-one-out): soft solve by letter and vanilla pairs, then keep a
+        # cell's new tile only if it breaks no object (object rules stay hard). Never leave wiped lawn
+        # inside a beach or path, which blocks the way.
+        picked = terrain.solve(grid, rules, {p: rows[p[1]][p[0]] for p in left}, margin=0,
+                               choices={p: list(domains[p]) or [grid.at(*p)[0]] for p in left},
+                               seed={p: grid.at(*p)[0] for p in left}, passes=24, diag_weight=.5)
+        glue = objects.Glue(repo, grid, pair)
+        kept = 0
+        for p in sorted(left, key=lambda q: (q[1], q[0])):
+            if p not in picked or picked[p] not in cell_bits.get(p, {}):
+                continue
+            old = grid.at(*p)
+            before = objects.count_in(glue, [p])
+            grid.set(*p, cell_bits[p][picked[p]])
+            if objects.count_in(glue, [p]) > before:
+                grid.set(*p, old)
+            else:
+                kept += 1
+        notes.append(f'INFO BLOCKOUT {label} soft remnant fill: {kept}/{len(left)} cells (object rules hard)')
+    notes.append(f'INFO BLOCKOUT {label} sectioned: solved:{len(solved)}/{len(cells)} '
+                 f'window:{SECTION} step:{SECTION_STEP} failed-windows:{len(failed)}')
+    for ax, ay, bx, by, why in failed[:8]:
+        notes.append(f'INFO BLOCKOUT {label} section {ax},{ay}-{bx},{by} unsolved: {why}')
+    return solved, notes
+
+
 def tile(repo, grid, pair, rows, exclude=()):
     """In-memory proposal + safety report. Caller stages only a safe proposal."""
     before = copy(grid)
@@ -1055,7 +1171,10 @@ def tile(repo, grid, pair, rows, exclude=()):
                        f'steps:{coherent["steps"]} OBJECT:hard')
         else:
             out.append(f'INFO BLOCKOUT hard coherent seed refused:{coherent["reason"]} '
-                       'no invalid assignment applied')
+                       'no invalid assignment applied; solving in sections')
+            _, notes = sectioned_solve(repo, grid, pair, rows, rules, seed_domains, active, cell_bits,
+                                       set(active), seed, False, 'coherent seed')
+            out.extend(notes)
         out.append(f'INFO BLOCKOUT solve editable:{len(active)} '
                    f'frozen-b:{grid.w * grid.h - len(choices)} (no modal-lawn or event freeze)')
         out.extend(object_regions(repo, grid, pair, rows, rules, active, cell_bits, exclude))
@@ -1072,13 +1191,31 @@ def tile(repo, grid, pair, rows, exclude=()):
                 apply_candidates(grid, hard['assignment'], active, cell_bits)
                 out.append(f'INFO BLOCKOUT rest solved:{len(rest)} steps:{hard["steps"]} OBJECT:hard')
             else:
-                out.append(f'INFO BLOCKOUT rest refused:{hard["reason"]}; coherent seed retained')
+                out.append(f'INFO BLOCKOUT rest refused:{hard["reason"]}; solving the rest in sections')
+                _, notes = sectioned_solve(repo, grid, pair, rows, rules, active, active, cell_bits,
+                                           set(rest), picked, True, 'rest')
+                out.extend(notes)
         else:
             out.append('INFO BLOCKOUT rest skipped: no non-tree editable cells')
         out.extend(local_repair(repo, grid, pair, rows, rules, active, cell_bits))
     else:
         out.append('INFO BLOCKOUT forest/rest skipped: no non-door candidates for any editable cell')
     out.append('INFO BLOCKOUT unrestricted terrain auto skipped: joins already solved in context domains')
+    elevation = getattr(rows, 'elevation', None)
+    if elevation:
+        changed = 0
+        for y in range(grid.h):
+            for x in range(grid.w):
+                if rows[y][x] == 'b':
+                    continue
+                mt, coll, elev = grid.at(x, y)
+                want = int(elevation[y][x], 16)
+                if elev != want:
+                    grid.set(x, y, (mt, coll, want))
+                    changed += 1
+        out.append(f'INFO BLOCKOUT elevation layer applied: {changed} cells changed height')
+    else:
+        out.append("INFO BLOCKOUT no elevation layer: heights are each tile's usual vanilla elevation")
     actual = export(repo, grid, pair)
     matched = sum(a == b for row, other in zip(rows, actual) for a, b in zip(row, other))
     fidelity = matched / (grid.w * grid.h)

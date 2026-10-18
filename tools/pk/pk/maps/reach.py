@@ -50,10 +50,12 @@ class World:
                 k = ('ledge', ledge)
             elif 'WATERFALL' in name:
                 k = ('waterfall', None)
+            elif coll:
+                # Collision blocks movement whatever the behaviour: vanilla sea rocks are ocean-water
+                # tiles with collision 1, and Surf can't enter them (checked before water on purpose).
+                k = ('wall', None)
             elif re.search(r'WATER|OCEAN|POND|CURRENT', name) and 'SHALLOW' not in name:
                 k = ('water', None)
-            elif coll:
-                k = ('wall', None)
             else:
                 k = ('floor', None)
             self.kind[(x, y)] = k

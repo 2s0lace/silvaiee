@@ -1443,3 +1443,20 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   Pallet Town, Route 3 pass (letters 99.57-100%, 0 new WARN OBJECT, reach lost 0, open banks 0). One Island
   Kindle Road (24x140) fails: the whole-map coherent hard solve hits one contradiction and refuses everything
   (52.53%). Next: solve in overlapping sections so a local contradiction only affects its section.
+
+## Blockout: sections, elevation layer, reach fix; 5/5 rebuilds pass (2026-10-18, Claude Opus)
+- **Sectioned solving.** The whole-map coherent hard solve refused all of One Island Kindle Road (24x140) on a
+  single contradiction (52.53%). Now, when it fails, `sectioned_solve` works in overlapping 24x24 windows
+  (stride 16): cells already solved are fixed, cells not reached yet are *free* (no constraint from them;
+  `hard_solve(..., free=...)`); a failing window splits into quarters down to 8x8; remnants get a soft
+  letter/pair fill that keeps a cell only if it breaks no object. Kindle Road: 98.42% after windows, 100%
+  after the remnant fill.
+- **Elevation layer.** Letters can't say how high a path is: a plateau path at elevation 4 rebuilt at 3 and
+  was cut off. Blockouts take an optional `elevation` block (one hex digit per cell); export writes it, the
+  tiler applies it to non-b cells.
+- **reach.py bug (shared).** Water behaviour was checked before collision, so vanilla sea rocks (ocean-water
+  tiles with collision 1) counted as surfable; the engine blocks any collision-1 cell. Collision is now checked
+  first. `pk check all`: 989 maps, 0 errors; bp and round-3 tests pass.
+- **Benchmark:** round trips 10/10 (13812/13812 cells); rebuilds (leave-one-out) Route 1, Route 22, Pallet
+  Town, Route 3, One Island Kindle Road all pass: letters 99.57-100%, 0 new WARN OBJECT, 0 reach lost, 0
+  open banks. Part 1's coastal "new map" step is still not done.

@@ -112,3 +112,8 @@ WFC Vocabulary at wfc.py:87 defines counts/key/pos_index used for conditioning.
 No invented solver attributes or material names are used.
 The public checkout lacks the other agent's optional wfc.py. Missing WFC prints
 INFO and falls back; WFC-specific tests explicitly print INFO and skip there.
+Optional elevation layer: after the letter rows, a line `elevation` and the same number of rows with one hex
+digit per cell (the game's walking height). Export always writes it; the tiler applies it to every non-b cell.
+Without it each tile gets its usual vanilla height (fine for flat maps; plateaus need it).
+Large maps are solved in overlapping 24x24 windows (stride 16) when the whole-map solve hits a contradiction;
+remnants get a soft fill that never breaks an object.
