@@ -188,7 +188,9 @@ class Context(unittest.TestCase):
         del rules.letters['p']
         rules.letters['b'] = Counter({(100, 0, 3): 50, (101, 1, 3): 1})
         choices, _, notes = blockout.context_candidates(['p'], rules)
-        self.assertEqual(set(choices[0, 0]), {8, 101})
+        # 101 has collision 1: a walkable letter never takes a blocking tile, even at any-non-door
+        # (one lawn cell turned to rock cut Route 22's gate area off).
+        self.assertEqual(set(choices[0, 0]), {8})
         self.assertEqual(choices.levels[0, 0], 3)
         steps = [n for n in notes if n.startswith('INFO BLOCKOUT widen 0,0 ')]
         self.assertEqual(len(steps), 3)

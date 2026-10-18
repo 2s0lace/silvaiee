@@ -16,6 +16,7 @@ from . import cards, layout, objects, terrain
 from .edit import load, save
 from .lint import physical_class, vanilla_outdoor, stratum_of
 from .meta import draw
+from .grid import decode
 from .reach import World, STATES
 
 HEADER = 'blockout 1'
@@ -113,8 +114,40 @@ class Classifier:
         self.memo[key] = char
         return char
 
+    def layout_uses(self):
+        """{metatile: {layout ids}} over the vanilla layouts of this pair (never Pk*)."""
+        if getattr(self, '_uses', None) is None:
+            key = (self.pair.primary['symbol'], self.pair.secondary['symbol'])
+            uses = {}
+            for lid, layout in self.repo.layouts().items():
+                if str(lid).startswith('LAYOUT_PK_') or                         (layout.get('primary_tileset'), layout.get('secondary_tileset')) != key:
+                    continue
+                try:
+                    cells = decode(self.repo.read(layout['blockdata_filepath']))
+                except PkError:
+                    continue
+                for mt in {c[0] for c in cells}:
+                    uses.setdefault(mt, set()).add(lid)
+            self._uses = uses
+        return self._uses
+
     def export(self, grid):
-        return [''.join(self.letter(grid.at(x, y)) for x in range(grid.w)) for y in range(grid.h)]
+        rows = [[self.letter(grid.at(x, y)) for x in range(grid.w)] for y in range(grid.h)]
+        # A building is the whole structure, not just the cells next to its door: wall-class cells
+        # (r/T/n) connected to a 'b' cell whose metatile is secondary-specific and used by no other
+        # vanilla layout of the pair can't be rebuilt from other maps, so they count as 'b' (frozen).
+        # Route 22's gate roof ends exported as 'r' before and could not be re-solved leave-one-out.
+        own = (getattr(grid, 'data', None) or {}).get('layout')
+        uses, limit = self.layout_uses(), self.pair.limits['metatiles']
+        unique = lambda mt: mt >= limit and not (uses.get(mt, set()) - {own})
+        queue = [(x, y) for y in range(grid.h) for x in range(grid.w) if rows[y][x] == 'b']
+        while queue:
+            x, y = queue.pop()
+            for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+                if 0 <= nx < grid.w and 0 <= ny < grid.h and rows[ny][nx] in OBJECT_LETTERS                         and unique(grid.at(nx, ny)[0]):
+                    rows[ny][nx] = 'b'
+                    queue.append((nx, ny))
+        return [''.join(row) for row in rows]
 
 
 def reference(repo):
@@ -338,6 +371,7 @@ class ContextDomains(dict):
     def __init__(self, rows, rules, connected):
         super().__init__()
         self.rows, self.connected = rows, connected
+        self.pair = rules.pair
         self.bands, self.levels, self.cell_bits, self.history = {}, {}, {}, []
         self.conflicts = {}
         self.cache = {}
@@ -384,10 +418,19 @@ class ContextDomains(dict):
     def activate(self, p, level):
         self.levels[p] = level
         by_mt = {}
+        walk = self.rows[p[1]][p[0]] in WALK
         for cell, n in self.bands[p][level].items():
+            # A walkable letter never takes a blocking tile, at any widening level: one lawn cell
+            # turned to rock in Route 22's fence gap cut the whole gate area off (reach lost 654).
+            if walk and (cell[1] or self.blocking(cell)):
+                continue
             by_mt.setdefault(cell[0], Counter())[cell] += n
         self[p] = sorted(by_mt, key=lambda mt: (-sum(by_mt[mt].values()), mt))
         self.cell_bits[p] = {mt: by_mt[mt].most_common(1)[0][0] for mt in self[p]}
+
+    def blocking(self, cell):
+        cls = physical_class(self.pair.behavior_name(cell[0]), cell[1])
+        return cls in ('wall', 'door') or cls.startswith('ledge')
 
     def widen(self, p, reason):
         level = self.levels[p]
@@ -644,8 +687,24 @@ def hard_solve(repo, grid, pair, rows, rules, choices, cell_bits, region=None,
         steps += 1
         return steps <= step_limit and time.monotonic() < deadline
 
+    bank_h, bank_v = getattr(rules, 'h', {}), getattr(rules, 'v', {})
+
+    def bank_ok(p, a, q, b, side):
+        """Water next to a walkable letter must be a contact vanilla uses (a pond rim, a shore); plain
+        open water against lawn is never a bank. Hard, like the object rules."""
+        lp, lq = rows[p[1]][p[0]], rows[q[1]][q[0]]
+        if not ((lp == '~' and lq in WALK) or (lq == '~' and lp in WALK)):
+            return True
+        if side == 'E':
+            return (a, b) in bank_h
+        if side == 'W':
+            return (b, a) in bank_h
+        if side == 'S':
+            return (a, b) in bank_v
+        return (b, a) in bank_v
+
     def compatible(p, a, q, b, side):
-        return model.pair_ok(p, cell_bits[p][a], q, cell_bits[q][b], side)
+        return model.pair_ok(p, cell_bits[p][a], q, cell_bits[q][b], side) and bank_ok(p, a, q, b, side)
 
     def propagate(current, queue):
         queue = deque(queue)
@@ -1025,9 +1084,17 @@ def tile(repo, grid, pair, rows, exclude=()):
     fidelity = matched / (grid.w * grid.h)
     added = sorted(set(objects.check(repo, grid, pair)) - set(objects.check(repo, before, pair)))
     losses = reach_losses(before, grid, pair)
-    # Every water/lawn cardinal contact is rejected, not disguised as a complete shore.
+    # Open bank = a water cell next to lawn with a tile pair vanilla never uses there. Pond rims are
+    # drawn inside surfable tiles, so plain "water letter next to lawn letter" fired 445 times on 36
+    # vanilla maps; the vanilla-pair rule is 0 on vanilla by construction (same as SEAM).
+    full = learned(repo, pair)       # all vanilla outdoor layouts + portable primary pairs (the solver's source)
+    def unseen_contact(x, y, nx, ny):
+        a, b = grid.at(x, y)[0], grid.at(nx, ny)[0]
+        if nx != x:
+            return ((a, b) if nx > x else (b, a)) not in full.h
+        return ((a, b) if ny > y else (b, a)) not in full.v
     open_bank = [(x, y) for y, row in enumerate(actual) for x, char in enumerate(row) if char == '~'
-                 and any(grid.inside(nx, ny) and actual[ny][nx] == '.'
+                 and any(grid.inside(nx, ny) and actual[ny][nx] == '.' and unseen_contact(x, y, nx, ny)
                          for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)))]
     out.extend(added)
     out.extend(f'WARN reach {entrance} lost:{n}' for entrance, n in list(losses.items())[:8])

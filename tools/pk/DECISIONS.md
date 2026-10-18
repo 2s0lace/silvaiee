@@ -1117,6 +1117,31 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   71% lawn, Gemini's park 93% mirrored, Sol's park 84%). Islands are not caught (sea is not lawn); a
   curviness measure would be next. To be validated against the owner's blind scores.
 
+## Winding path measurement and stopped acceptance miss (2026-10-17, Sol)
+- Measured all 72 vanilla FRLG outdoor maps. An 8-connected `path`/`sand` component qualified when it
+  touched at least two edge or door/warp destinations: 98 components, 5,539 cells. Local width median
+  **2**, p95 **6**; maximal horizontal/vertical run p95 **8**; adjacent cross-sections changed width
+  **953/2,692 = 35.4%**. `pk terrain path` therefore defaults to width 2, rejects width >6, and hard-caps
+  A* straight runs at 8.
+- Acceptance stopped on the first required miss: Route 1 produced three deterministic routes and run
+  length 8, but the best attempted paint had 141 path seams (vanilla 0; target <=5) and added 14 broken
+  object sides, so the command refused the write. The pair's `path` tags are transition/cap tiles rather
+  than a complete fill material; at Route 1's two-cell ledge gaps there is no observed horizontal
+  `path`/`ledge_s` pair. Targets were not loosened; Pallet and final comparison were not run.
+
+## Vanilla material-shape library (2026-10-17, Codex)
+- `pk shape` extracts connected material masks from all 72 vanilla outdoor maps into the ignored
+  `.pk/shapes/index.json`: ponds/coves from `Rules.material == water`, beaches/sandbars from sand, islands
+  from land enclosed by water, tall grass from `grass_enc`, and groves from wall cells constrained by the
+  object-card model. Stable IDs retain source map/box, pair portability and outline corner count.
+- Find ranks exact then +/-2 sizes by curviness and can render source pixels beside masks. Place paints the
+  mask through `terrain.apply`, supports h/v reflection only, and auto-fills the one-cell outline while
+  freezing mask cells. Portable masks add their source pair's primary-tile adjacency; an outline is reverted
+  if it adds unseen seams or broken object sides.
+- Measured masks: pond 175, cove 65, grove 903, island 121, sandbar 14, beach 69, tallgrass 239. Five
+  non-rectangular Pallet-pair placements kept 100% mask fidelity, added no OBJECT/reach warning, and left
+  9/13/15/20/20 ring seams, never above their terrain-auto baseline. See `tasks/sol_shape_report.md`.
+
 ## Path material and safety improvement (2026-10-17, Codex)
 - Corrected the earlier diagnosis: road edges 0x0DB/0x0DD/0x0D4/0x0E4 are tagged grass, but contain the
   dominant road-interior colour. Path rules now include these tiles locally without changing sidecars.
@@ -1130,6 +1155,37 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   that required miss; Pallet junctions deferred. Comparison: .pk/render/path_route1.png. The inherited
   width 2/p95 6, axis-run p95 8, width-change 35.4% figures are cross-section statistics, not a validated
   between-bend skeleton measurement. See tasks/sol_path_report.md and tests/test_paths.py --benchmark.
+
+## Shape improvement and independent acceptance correction (2026-10-17, Codex)
+- The earlier shape entry's water counts and baseline claims were misleading: water tags included land
+  tiles, and its reported baseline was placement's own outline pass rather than a separate control.
+  Water now uses game-behavior validation: pond 45, cove 46, island 44, sandbar 0, beach 46. The 903 grove
+  candidates still include constrained walls not proven to be trees; tallgrass remains 239.
+- Shore selection uses observed vanilla 3x3 water/land patterns with terrain-auto scoring. Exact patterns
+  are preferred; missing diagonals may use the closest pattern with identical own/cardinal classes.
+  Banks are completed without copying source tiles or mirroring directional graphics. The water family
+  stays fixed; a two-cell outline blends with the destination lawn.
+- Added atomic failure rollback, event-overlap refusal, object/reach refusal, explicit reach output,
+  cache versioning and dry-run cache/sheet protection. Tests use an in-memory Pallet copy retaining its
+  events rather than a blank map without reachability entrances.
+- A separate control calls real terrain.auto after the same paint and freezes mask cells. Both results
+  use the same footprint and critic. Improved/baseline seams: 21/13, 12/17, 24/22, 17/24, 34/35. All five
+  retained 100% game-water fidelity, zero new object/reach warnings and at least 20% bbox holes. Two seam
+  targets fail: STOP, no acceptance claim or threshold relaxation. See tasks/sol_shape_report.md.
+
+## Owner pond review: preserve destination lawn (2026-10-18, Codex)
+- Owner identified the visible halo as generic grass replacing Pallet's light lawn, with isolated sand
+  tiles introduced by the same land-cell optimization. Measure the dominant walkable metatile on the
+  one-cell perimeter outside the destination box before painting; preserve its modal collision/elevation.
+- Pond/cove non-water cells across the box and two-cell ring are fixed to this exact target cell and
+  excluded from both material-paint margin changes and shoreline optimization. Only water-bank cells
+  are solved; deep water stays filled. Refuse event/terrain overwrites in the background region.
+- Same five IDs, sizes, positions, independent auto controls and thresholds: seams 12/13, 17/17, 16/22,
+  30/24, 31/35. All measured lawn 0x296/collision 0/elevation 3; zero lawn mismatches, zero added sand,
+  100% water fidelity, zero added object/reach warnings, 20–31.7% bbox holes. Eleven unit checks pass.
+- The halo defect is fixed, but the 9x7 pond still misses the seam target (30 > 24). STOP; no further
+  optimization or target relaxation. The expanded Pallet fixture has 24 pre-placement object warnings
+  at its old edges; pond placement adds none. Updated .pk/render/shape_ponds.png and task report.
 
 ## Owner path review: lawn verges, bends and ledges (2026-10-18, Codex)
 - Applied owner review of path_route1.png: A* penalizes grass_enc cells and obstacle proximity, requires
@@ -1371,3 +1427,19 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   No game-map writes, ROM builds, pushes or threshold relaxation.
 - STOP at first acceptance miss. Remaining three rebuilds, coastal map, Parts 2-3 and v3
   table explicitly skipped; Part 1 remains WIP.
+
+## Blockout rebuilds: structures, walkable letters, banks (2026-10-18, Claude Opus)
+- **Structures:** a building is the whole structure. Export now marks as `b` every wall-class cell (r/T/n)
+  connected to a `b` cell whose metatile is secondary-specific and used by no other vanilla layout of the pair:
+  it cannot be rebuilt from other maps (Route 22's gate roof ends exported as `r` and could not be re-solved
+  leave-one-out). Round trip still 13812/13812 on the 10 benchmark maps.
+- **Walkable letters never take blocking tiles** at any widening level (collision 1, wall, door, ledge):
+  one lawn cell in Route 22's fence gap became rock and cut the gate area off (reach lost 654 cells).
+- **Open bank, redefined:** a water cell next to lawn whose tile pair vanilla never uses there. The old rule
+  ("water letter next to lawn letter") fired 445 times on 36 vanilla maps, because pond rims are drawn inside
+  surfable tiles; a role-based variant still fired 36 times on 4 maps. The pair rule uses the solver's own
+  tables (all vanilla outdoor layouts + portable primary pairs) and is a hard constraint in `hard_solve`.
+- **Benchmark (`test_blockout.py --benchmark`):** round trips 10/10 at 100%; rebuilds Route 1, Route 22,
+  Pallet Town, Route 3 pass (letters 99.57-100%, 0 new WARN OBJECT, reach lost 0, open banks 0). One Island
+  Kindle Road (24x140) fails: the whole-map coherent hard solve hits one contradiction and refuses everything
+  (52.53%). Next: solve in overlapping sections so a local contradiction only affects its section.
