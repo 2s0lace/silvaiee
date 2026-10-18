@@ -1199,3 +1199,30 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - Render: .pk/render/blockout_Route1_Frlg.png, original left / rejected proposal right. Only that PNG
   was journaled; no game-map data changed. INFO skipped: remaining four wiped maps, coastal map,
   Part 2 library, Part 3 measures/calibration and v3 table. Part 1 remains unaccepted WIP.
+
+## Blockout whole-forest WFC proposal; stopped on leave-one-out Route 1 (2026-10-18, Codex)
+- Owner diagnosed tree-stamp fitting as the main reconstruction defect. T cells now use one whole-mask
+  forest solve, with only metatiles exporting as T and all non-T cells frozen. Rocks retain kit placement.
+  wfc.learn at wfc.py:113 and fill at :544 accept exclude/forced domains; Glue.broken_side (:151)
+  filters map-border and frozen-neighbour sockets. Incomplete/unsafe WFC proposals fall back to
+  terrain.solve (margin zero); any new OBJECT identity rejects and rolls back the entire forest fill.
+- Added an outdoor-only LearningRepo view that excludes the held-out layout and every alias. This
+  prevents WFC's separate pair scorer (which does not accept exclude) and other material/pair learning
+  from silently learning the held-out map. Classification/export remains the unchanged card/pixel model.
+- Command: python tools/pk/tests/test_blockout.py -> 18 tests pass. New checks cover full-region
+  T domains/non-T immutability, exclude forwarding, hidden layout aliases, incomplete-WFC fallback,
+  object-rejection rollback and actual-map-edge-domain refusal.
+- Command: python tools/pk/tests/test_blockout.py --benchmark --rebuilds-only -> Route1_Frlg
+  FAIL: fidelity 597/960 = 62.19% (<95%), new_OBJECT:0, original-map reach_lost:0, open_bank:0.
+  WFC left 300 T cells unresolved; fallback would add 28 OBJECT rows and was rejected. Zero new
+  OBJECT reflects refusal, not successful forest placement. Mismatches T:300, g:1, r:1, v:61.
+  The same-pair material learner has no v candidates after leave-one-out; portable cross-pair
+  material learning is still missing. The exact benchmark mask/wipe and acceptance limits did not change.
+- STOP on that first miss. INFO skipped: remaining four rebuilds, coastal map, Parts 2-3 and v3 table.
+  Round trips were explicitly skipped on this resume after the prior 10/10 (13812/13812) pass.
+  Updated .pk/render/blockout_Route1_Frlg.png (original left, rejected proposal right); no game-map writes.
+- WFC exists in the game workspace but is not installed/tracked in the public checkout. It belongs
+  to another agent and was not edited/copied. Public code explicitly falls back when absent;
+  WFC-specific contract tests print INFO and skip there. Part 1 remains unaccepted WIP.
+- Public verification: python release/silvaiee/tools/pk/tests/test_blockout.py -> 18 tests run,
+  OK (skipped=4), each skip explicitly reports the absent optional WFC module.

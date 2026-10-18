@@ -5,7 +5,10 @@ Never commits a transaction; all grid edits are in memory. Only render outputs
 are written, through Transaction.stage/commit, separately from map proposals.
 """
 from copy import copy
+from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 import sys
 import unittest
 
@@ -117,15 +120,118 @@ class Maps(unittest.TestCase):
                 blockout.command(repo, tx, ['blockout', grid.name, '.pk/blockout_test.txt'], {})
         self.assertEqual(before, tx.writes)
 
+    def test_leave_one_out_view_hides_entire_layout(self):
+        held_out, _ = load(self.repo, 'Route1_Frlg')
+        ref = blockout.learning_reference(self.repo, ('Route1_Frlg',))
+        self.assertNotIn('Route1_Frlg', ref.maps())
+        self.assertNotIn(held_out.layout['id'], ref.layouts())
+        self.assertFalse(any(d['layout'] == held_out.layout['id'] for d in ref.maps().values()))
+        self.assertFalse(any(name.startswith('Pk') for name in ref.maps()))
 
-def benchmark():
+
+class Forest(unittest.TestCase):
+    class Grid:
+        w, h = 3, 3
+
+        def __init__(self):
+            self.cells = [(8, 0, 3)] * 9
+
+        def at(self, x, y):
+            return self.cells[y * self.w + x]
+
+        def set(self, x, y, cell):
+            self.cells[y * self.w + x] = cell
+
+        def inside(self, x, y):
+            return 0 <= x < self.w and 0 <= y < self.h
+
+    def setup_fill(self, complete=True):
+        try:
+            from pk.maps import wfc
+        except ImportError:
+            print('INFO forest WFC contract tests skipped: optional pk.maps.wfc is not installed', flush=True)
+            self.skipTest('optional pk.maps.wfc is not installed')
+        grid = self.Grid()
+        rules = SimpleNamespace(by_mat={'T': {1}}, bits={1: Counter({(1, 3): 10})},
+                                material=lambda cell: 'T')
+        fill = wfc.Fill({(1, 0): 1, (1, 1): 1, (1, 2): 1})
+        fill.complete = complete
+        if not complete:
+            fill.unsatisfied = [(1, 1)]
+        return grid, rules, fill
+
+    def test_wfc_full_region_domains_and_non_t_frozen(self):
+        grid, rules, fill = self.setup_fill()
+        glue = SimpleNamespace(broken_side=lambda *a: None)
+        with patch.object(blockout.objects, 'check', return_value=[]), \
+             patch.object(blockout.objects, 'Glue', return_value=glue), \
+             patch.object(blockout, 'learning_reference', return_value=object()), \
+             patch('pk.maps.wfc.learn', return_value=[1]) as learn, \
+             patch('pk.maps.wfc.fill', return_value=fill) as solve:
+            notes = blockout.forest(object(), grid, object(), ['.T.', '.T.', '.T.'], rules,
+                                    exclude=('Route1_Frlg',))
+        self.assertEqual(learn.call_args.kwargs['exclude'], ('Route1_Frlg',))
+        self.assertFalse(learn.call_args.kwargs['use_cache'])
+        self.assertEqual(solve.call_args.args[3], [(1, 0), (1, 1), (1, 2)])
+        self.assertEqual(solve.call_args.kwargs['forced'], {(1, y): [1] for y in range(3)})
+        self.assertTrue(any('forest WFC cells:3' in line for line in notes))
+        for y in range(3):
+            self.assertEqual(grid.at(1, y), (1, 1, 3))
+            self.assertEqual(grid.at(0, y), (8, 0, 3))
+            self.assertEqual(grid.at(2, y), (8, 0, 3))
+
+    def test_incomplete_wfc_uses_seen_pair_fallback(self):
+        grid, rules, fill = self.setup_fill(False)
+        glue = SimpleNamespace(broken_side=lambda *a: None)
+        with patch.object(blockout.objects, 'check', return_value=[]), \
+             patch.object(blockout.objects, 'Glue', return_value=glue), \
+             patch.object(blockout, 'learning_reference', return_value=object()), \
+             patch('pk.maps.wfc.learn', return_value=[1]), \
+             patch('pk.maps.wfc.fill', return_value=fill), \
+             patch.object(blockout.terrain, 'solve', return_value=dict(fill)) as solve:
+            notes = blockout.forest(object(), grid, object(), ['.T.', '.T.', '.T.'], rules)
+        self.assertEqual(solve.call_args.kwargs['margin'], 0)
+        self.assertTrue(any('seen-pair fallback cells:3' in line for line in notes))
+
+    def test_object_breaking_forest_is_rolled_back(self):
+        grid, rules, fill = self.setup_fill()
+        before = list(grid.cells)
+        glue = SimpleNamespace(broken_side=lambda *a: None)
+        check = lambda *a: ['WARN OBJECT bad'] if any(c[0] == 1 for c in grid.cells) else []
+        with patch.object(blockout.objects, 'check', side_effect=check), \
+             patch.object(blockout.objects, 'Glue', return_value=glue), \
+             patch.object(blockout, 'learning_reference', return_value=object()), \
+             patch('pk.maps.wfc.learn', return_value=[1]), \
+             patch('pk.maps.wfc.fill', return_value=fill), \
+             patch.object(blockout.terrain, 'solve', return_value=dict(fill)):
+            notes = blockout.forest(object(), grid, object(), ['.T.', '.T.', '.T.'], rules)
+        self.assertEqual(grid.cells, before)
+        self.assertTrue(any('fallback refused' in line for line in notes))
+
+    def test_bad_map_edge_domain_is_refused(self):
+        grid, rules, _ = self.setup_fill()
+        before = list(grid.cells)
+        def bad(x, y, side, cell=None):
+            return True if y == 0 and side == 'N' else None
+        with patch.object(blockout.objects, 'check', return_value=[]), \
+             patch.object(blockout.objects, 'Glue', return_value=SimpleNamespace(broken_side=bad)), \
+             patch('pk.maps.wfc.fill') as solve:
+            notes = blockout.forest(object(), grid, object(), ['.T.', '.T.', '.T.'], rules)
+        solve.assert_not_called()
+        self.assertEqual(grid.cells, before)
+        self.assertTrue(any('no border/frozen-neighbour fit' in line for line in notes))
+
+
+def benchmark(rebuilds_only=False):
     repo = Repo(ROOT)
     choices = ['Route1_Frlg', 'Route22_Frlg', 'PalletTown_Frlg', 'Route3_Frlg', 'OneIsland_KindleRoad_Frlg']
     choices += [name for name, _ in vanilla_outdoor(repo) if name not in choices][:5]
     matched = total = 0
     # Resume the previously blocked Kindle Road first, then finish this same
     # ten-map cohort; earlier four are revalidated against the extended legend.
-    for name in choices[4:] + choices[:4]:
+    if rebuilds_only:
+        print('INFO roundtrips skipped: resume wiped-map acceptance after previous 10/10, 100% pass', flush=True)
+    for name in ([] if rebuilds_only else choices[4:] + choices[:4]):
         grid, pair = load(repo, name)
         original = list(grid.cells)
         try:
@@ -144,7 +250,8 @@ def benchmark():
         if not ok:
             print('STOP roundtrip target missed; INFO retiles/coastal/Parts 2-3 skipped', flush=True)
             return 1
-    print(f'roundtrip maps:{len(choices)} cells:{matched}/{total} fidelity:{matched / total:.2%} PASS', flush=True)
+    if not rebuilds_only:
+        print(f'roundtrip maps:{len(choices)} cells:{matched}/{total} fidelity:{matched / total:.2%} PASS', flush=True)
     # Real wipe: every non-building cell becomes the target map's own modal lawn.
     for name in choices[:5]:
         original, pair = load(repo, name)
@@ -155,7 +262,8 @@ def benchmark():
         grid.name = 'PkBlockBenchmark_Frlg'
         grid.cells = [cell if rows[i // grid.w][i % grid.w] == 'b' else lawn
                       for i, cell in enumerate(original.cells)]
-        report = blockout.tile(repo, grid, pair, rows)
+        print(f'INFO retile {name} learning excludes its entire layout', flush=True)
+        report = blockout.tile(repo, grid, pair, rows, exclude=(name,))
         # Acceptance is compared with original vanilla, not the weakened wipe.
         added = len(set(blockout.objects.check(repo, grid, pair)) - set(blockout.objects.check(repo, original, pair)))
         losses = blockout.reach_losses(original, grid, pair)
@@ -167,6 +275,10 @@ def benchmark():
         print(f'retile {name} new_OBJECT:{added} reach_lost:{sum(losses.values())} '
               f'fidelity:{report["fidelity"]:.2%} open_bank:{report["open_bank"]} pass:{ok} render:{render}', flush=True)
         print('\n'.join(report['rows']), flush=True)
+        actual = blockout.export(repo, grid, pair)
+        mismatches = Counter(a for expected, observed in zip(rows, actual)
+                             for a, b in zip(expected, observed) if a != b)
+        print('INFO mismatches ' + ' '.join(f'{char}:{n}' for char, n in sorted(mismatches.items())), flush=True)
         if not ok:
             print('STOP retile target missed; INFO remaining retiles/coastal/Parts 2-3 skipped; thresholds unchanged', flush=True)
             return 1
@@ -176,5 +288,5 @@ def benchmark():
 
 if __name__ == '__main__':
     if '--benchmark' in sys.argv:
-        raise SystemExit(benchmark())
+        raise SystemExit(benchmark('--rebuilds-only' in sys.argv))
     unittest.main()

@@ -237,13 +237,139 @@ class LetterRules(terrain.Rules):
         return self.classify.letter(cell)
 
 
-def learned(repo, pair):
+class LearningRepo(Repo):
+    """Outdoor-only, layout-level leave-one-out view, including WFC pair scoring.
+
+    wfc.learn excludes windows, but wfc.fill also constructs terrain.Rules through
+    its private _pair_rules. Filtering the Repo keeps both learners honest without
+    modifying WFC or planting its private cache attributes.
+    """
+    def __init__(self, root, exclude):
+        super().__init__(root)
+        clean = Repo(root)
+        maps, layouts = clean.maps(), clean.layouts()
+        dropped = {maps[name]['layout'] for name in exclude if name in maps}
+        self._maps = {name: maps[name] for name, _ in vanilla_outdoor(clean)
+                      if maps[name]['layout'] not in dropped}
+        kept = {data['layout'] for data in self._maps.values()}
+        self._layouts = {lid: value for lid, value in layouts.items() if lid in kept}
+
+    def maps(self):
+        return self._maps
+
+    def layouts(self):
+        return self._layouts
+
+
+def learning_reference(repo, exclude):
     ref = reference(repo)
+    cache = ref.__dict__.setdefault('_blockout_learning', {})
+    key = tuple(sorted(set(exclude)))
+    if key not in cache:
+        cache[key] = LearningRepo(ref.root, key)
+    return cache[key]
+
+
+def learned(repo, pair, exclude=()):
+    ref = learning_reference(repo, exclude) if exclude else reference(repo)
     cache = ref.__dict__.setdefault('_blockout_rules', {})
     key = pair.primary['symbol'], pair.secondary['symbol']
     if key not in cache:
         cache[key] = LetterRules(ref, pair, classifier(repo, pair))
     return cache[key]
+
+
+def forest(repo, grid, pair, rows, rules, fixed=frozenset(), exclude=()):
+    """Solve the full T mask, never individual trees, and never touch non-T cells.
+
+    wfc.py learn:113 / fill:544 accept an arbitrary coordinate set and forced
+    domains. objects.py Glue:121 / broken_side:151 checks the real map border.
+    terrain.py solve:83 is the deterministic seen-pair fallback. Every proposal
+    must satisfy its T domain and pass the unchanged object guard before commit.
+    """
+    cells = {(x, y) for y, row in enumerate(rows) for x, char in enumerate(row)
+             if char == 'T' and (x, y) not in fixed}
+    if not cells:
+        return ['INFO BLOCKOUT forest skipped: no editable T cells']
+    original = list(grid.cells)
+    before_objects = set(objects.check(repo, grid, pair))
+    glue = objects.Glue(repo, grid, pair)
+    candidates = sorted(mt for mt in rules.by_mat.get('T', ())
+                        if rules.material((mt, *rules.bits[mt].most_common(1)[0][0])) == 'T')
+    bits = {mt: (mt, *rules.bits[mt].most_common(1)[0][0]) for mt in candidates}
+    choices = {}
+    reverse = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}
+    # Enforce both directions of each object socket against frozen neighbours;
+    # for map edges Glue reads border.bin or skips an actual connected side.
+    for x, y in sorted(cells, key=lambda p: (p[1], p[0])):
+        allowed = []
+        saved = grid.at(x, y)
+        for mt in candidates:
+            grid.set(x, y, bits[mt])
+            valid = True
+            for side, (dx, dy) in objects.SIDES.items():
+                q = x + dx, y + dy
+                if q in cells:
+                    continue
+                if glue.broken_side(x, y, side, bits[mt]) is not None:
+                    valid = False
+                    break
+                if grid.inside(*q) and glue.broken_side(*q, reverse[side]) is not None:
+                    valid = False
+                    break
+            if valid:
+                allowed.append(mt)
+        grid.set(x, y, saved)
+        choices[x, y] = allowed
+    empty = [p for p, domain in choices.items() if not domain]
+    if empty:
+        x, y = empty[0]
+        return [f'INFO BLOCKOUT forest refused: {len(empty)} T cells have no border/frozen-neighbour fit; first {x},{y}']
+
+    def accept(assignment):
+        if set(assignment) != cells or any(mt not in choices[p] for p, mt in assignment.items()):
+            return False, 'incomplete or out-of-domain T assignment'
+        for p, mt in assignment.items():
+            grid.set(*p, bits[mt])
+        if any(grid.cells[i] != cell for i, cell in enumerate(original)
+               if (i % grid.w, i // grid.w) not in cells):
+            grid.cells[:] = original
+            return False, 'changed a frozen non-T cell'
+        added = set(objects.check(repo, grid, pair)) - before_objects
+        if added:
+            grid.cells[:] = original
+            return False, f'would add {len(added)} WARN OBJECT rows (including edges)'
+        return True, ''
+
+    notes = []
+    try:
+        from . import wfc
+        ref = learning_reference(repo, exclude)
+        vocab = wfc.learn(ref, pair, use_cache=False, exclude=tuple(exclude))
+        proposal = wfc.fill(ref, grid, pair, sorted(cells, key=lambda p: (p[1], p[0])),
+                            forced=choices, vocabulary=vocab)
+        if proposal.complete:
+            ok, reason = accept(proposal)
+            if ok:
+                return [f'INFO BLOCKOUT forest WFC cells:{len(cells)} patterns:{len(vocab)} '
+                        f'exclude:{",".join(exclude) or "none"} non-T:frozen OBJECT:new:0']
+        else:
+            reason = proposal.reason or f'incomplete ({len(proposal.unsatisfied)} unresolved cells)'
+        notes.append(f'INFO BLOCKOUT forest WFC fallback: {reason}')
+    except (PkError, ImportError) as exc:
+        notes.append(f'INFO BLOCKOUT forest WFC fallback: {exc}')
+    # WFC may retain an invalid original in an incomplete fill: never use it as
+    # a seed. Every fallback seed is itself an allowed T metatile.
+    picked = terrain.solve(grid, rules, {p: 'T' for p in cells}, margin=0,
+                           choices=choices, seed={p: choices[p][0] for p in cells},
+                           passes=24, diag_weight=.5)
+    ok, reason = accept(picked)
+    if ok:
+        notes.append(f'INFO BLOCKOUT forest seen-pair fallback cells:{len(cells)} '
+                     f'exclude:{",".join(exclude) or "none"} non-T:frozen OBJECT:new:0')
+    else:
+        notes.append(f'INFO BLOCKOUT forest fallback refused: {reason}; original T-region cells retained')
+    return notes
 
 
 def reach_losses(before, after, pair):
@@ -283,7 +409,7 @@ def object_pieces(repo, pair, rules):
     return pieces
 
 
-def tile(repo, grid, pair, rows):
+def tile(repo, grid, pair, rows, exclude=()):
     """In-memory proposal + safety report. Caller stages only a safe proposal."""
     before = copy(grid)
     before.cells = list(grid.cells)
@@ -293,14 +419,14 @@ def tile(repo, grid, pair, rows):
                           'INFO OBJECT new:0', 'INFO reach unchanged',
                           f'INFO BLOCKOUT fidelity {grid.w * grid.h}/{grid.w * grid.h} = 100.00%',
                           'INFO BLOCKOUT tiling/joins skipped: no changed letters'])
-    rules = learned(repo, pair)
+    rules = learned(repo, pair, exclude)
     if not rules.sources:
         raise PkError('NOTFOUND', 'no vanilla outdoor reference for target pair')
     out = ['INFO BLOCKOUT shapes fallback: existing shape benchmark is not accepted; material solver used',
            'INFO BLOCKOUT paths fallback: existing path benchmark is not accepted; drawn-cell brush used']
     wanted = {(x, y): char for y, row in enumerate(rows) for x, char in enumerate(row)}
     fixed = {p for p, char in wanted.items() if char == 'b'} | set(events(grid.data))
-    # Object cells start as lawn; only whole source pieces may turn them into objects.
+    # Trees are solved jointly as a forest; rocks still use whole source pieces.
     lawn_cells = Counter(cell for source in rules.sources for cell in source.cells if rules.material(cell) == '.')
     if not lawn_cells:
         raise PkError('NOTFOUND', 'no observed target-pair lawn; no generic grass fallback')
@@ -322,13 +448,14 @@ def tile(repo, grid, pair, rows):
         for p, mt in picked.items():
             coll, elev = rules.bits[mt].most_common(1)[0][0]
             grid.set(*p, (mt, coll, elev))
-    pending = {p for p, char in wanted.items() if char in 'Tr' and p not in fixed}
+    out.extend(forest(repo, grid, pair, rows, rules, fixed, exclude))
+    pending = {p for p, char in wanted.items() if char == 'r' and p not in fixed}
     initial_objects = set(objects.check(repo, grid, pair))
     pieces = object_pieces(reference(repo), pair, rules) if pending else []
     for w, h, chars, cells in pieces:
         for x, y in sorted(list(pending), key=lambda p: (p[1], p[0])):
             positions = [(x + dx, y + dy) for dy in range(h) for dx in range(w)]
-            if any(not grid.inside(*p) or p in fixed for p in positions):
+            if any(not grid.inside(*p) or p in fixed or wanted[p] == 'T' for p in positions):
                 continue
             if ''.join(wanted[p] for p in positions) != chars:
                 continue
