@@ -12,6 +12,7 @@ from pk.core.repo import Repo  # noqa: E402
 from pk.maps.edit import load  # noqa: E402
 from pk.maps import paths, terrain, objects, meta  # noqa: E402
 from pk.core.errors import PkError  # noqa: E402
+from pk.maps.lint import physical_class  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -46,6 +47,23 @@ class PathRoutes(unittest.TestCase):
         family, _ = paths.road_family(self.repo, self.pair, rules)
         self.assertTrue({0x0DC, 0x0DB, 0x0DD, 0x0D4, 0x0E4} <= family)
         self.assertNotIn(0x010, family)
+        self.assertNotIn(0x115, family, 'beach sand shares the road colour but not its behavior')
+
+    def test_bends_have_two_straight_steps(self):
+        route = paths.route(self.repo, self.grid, self.pair, [(11, 0), (12, 39)], 2)
+        self.assertTrue(all(n >= 2 for n in straight_runs(route)[:-1]))
+
+    def test_new_road_keeps_a_lawn_verge_and_preserves_ledge_rows(self):
+        route = paths.route(self.repo, self.grid, self.pair, [(11, 0), (12, 39)], 2)
+        before = list(self.grid.cells)
+        _, rules = paths._paint(self.repo, self.grid, self.pair, route, 2, 'path')
+        family, _ = paths.road_family(self.repo, self.pair, rules)
+        self.assertEqual(grass_contacts(self.grid, self.pair, family, before), [])
+        for y in range(self.grid.h):
+            for x in range(self.grid.w):
+                old = before[y * self.grid.w + x]
+                if physical_class(self.pair.behavior_name(old[0]), old[1]).startswith('ledge'):
+                    self.assertEqual(self.grid.at(x, y), old)
 
     def test_paint_preserves_blockers_bits_and_reach(self):
         route = paths.route(self.repo, self.grid, self.pair, [(11, 0), (12, 39)], 2)
@@ -75,6 +93,35 @@ class PathRoutes(unittest.TestCase):
         self.assertFalse(self.tx.writes)
 
 
+def straight_runs(route):
+    result, previous, run = [], None, 0
+    for a, b in zip(route, route[1:]):
+        direction = b[0] - a[0], b[1] - a[1]
+        if previous is not None and direction != previous:
+            result.append(run)
+            run = 0
+        run += 1
+        previous = direction
+    if run:
+        result.append(run)
+    return result
+
+
+def grass_contacts(grid, pair, family, before):
+    result = []
+    for y in range(grid.h):
+        for x in range(grid.w):
+            if grid.at(x, y)[0] not in family or grid.at(x, y) == before[y * grid.w + x]:
+                continue
+            for dx, dy in paths.STEPS:
+                q = x + dx, y + dy
+                if grid.inside(*q):
+                    cell = grid.at(*q)
+                    if physical_class(pair.behavior_name(cell[0]), cell[1]) == 'grass_enc':
+                        result.append(((x, y), q))
+    return result
+
+
 def benchmark():
     """Required wiped-copy acceptance case. No map data is committed; exit nonzero on a miss."""
     repo = Repo(ROOT)
@@ -99,6 +146,8 @@ def benchmark():
     _, reach_line = paths._validate(repo, grid, pair, before, cells)
     new_objects = set(objects.check(repo, grid, pair)) - before_objects
     seams = len(terrain.unseen(grid, rules, cells))
+    changed = {(x, y) for y in range(grid.h) for x in range(grid.w)
+               if grid.at(x, y) != before[y * grid.w + x]}
     render = repo.path('.pk/render/path_route1.png')
     render.parent.mkdir(parents=True, exist_ok=True)
     render.write_bytes(meta.render_compare(repo, (original, pair), (grid, pair), scale=2))
@@ -106,9 +155,15 @@ def benchmark():
                   new_objects=len(new_objects), reach=reach_line, straight=paths.longest_straight(routes[0]),
                   options=len({tuple(route) for route in routes}), seams=seams, seam_limit=vanilla_seams + 5,
                   road_cells=sum(coverage.get(grid.at(*p)[0], 0) >= .15 for p in cells),
-                  painted_cells=len(cells), render=str(render))
+                  painted_cells=len(cells), grass_contacts=len(grass_contacts(grid, pair, family, before)),
+                  min_segment=min(straight_runs(routes[0])[:-1]),
+                  seams_including_changed_verge=len(terrain.unseen(grid, rules, changed | cells)),
+                  render=str(render))
     print(json.dumps(result, indent=2))
-    return 0 if not new_objects and reach_line == 'reach: ok' and seams <= vanilla_seams + 5 else 1
+    passed = (not new_objects and reach_line == 'reach: ok' and seams <= vanilla_seams + 5
+              and result['straight'] <= paths.VANILLA_STRAIGHT_P95 and result['options'] == 3
+              and result['min_segment'] >= 2 and result['grass_contacts'] == 0)
+    return 0 if passed else 1
 
 
 if __name__ == '__main__':

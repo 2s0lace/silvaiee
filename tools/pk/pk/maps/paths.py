@@ -11,6 +11,7 @@ import heapq
 from ..core.errors import PkError
 from ..core.out import Result
 from .edit import load, save
+from .grid import decode
 from .layers import events
 from .lint import physical_class
 from . import lint, meta, objects, reach, terrain
@@ -121,13 +122,15 @@ def _astar(grid, starts, goals, allowed, seed, option, old_path, prior, danger=N
         for nd, (dx, dy) in enumerate(STEPS):
             if direction >= 0 and nd == (direction + 2) % 4:
                 continue
+            if direction >= 0 and nd != direction and run < 2:
+                continue
             nxt = (x + dx, y + dy)
             if nxt not in allowed:
                 continue
             nrun = run + 1 if nd == direction else 1
             if nrun > VANILLA_STRAIGHT_P95:
                 continue
-            bend = 1.35 if direction >= 0 and nd != direction else 0.0
+            bend = 3.0 if direction >= 0 and nd != direction else 0.0
             merge = 0.0 if nxt in old_path else 0.35
             diversity = 1.8 if nxt in prior else 0.0
             step = (1.0 + bend + 0.42 * _jitter(seed, *nxt, option) + merge + diversity
@@ -160,8 +163,9 @@ def route(repo, grid, pair, waypoints, width=2, option=1, prior=frozenset()):
     old_path = {(x, y) for y in range(grid.h) for x in range(grid.w)
                 if rules.material(grid.at(x, y)) in ('path', 'sand')}
     seed = grid.name + '|' + '|'.join(f'{x},{y}' for x, y in waypoints)
-    path_choices = {m for m in rules.by_mat.get('path', ()) if rules.freq.get(m, 0)}
-    blocked = blocked_cells(repo, grid, pair)
+    path_choices, _ = road_family(repo, pair, rules)
+    encounter = {(x, y) for y in range(grid.h) for x in range(grid.w)
+                 if physical_class(pair.behavior_name(grid.at(x, y)[0]), grid.at(x, y)[1]) == 'grass_enc'}
 
     def incompatible_edges(anchor):
         footprint = _footprint(anchor, width)
@@ -176,7 +180,10 @@ def route(repo, grid, pair, waypoints, width=2, option=1, prior=frozenset()):
                 if not any(((fixed, m) in table if reverse else (m, fixed) in table)
                            for m in path_choices):
                     bad += 1
-        return bad
+        # Prefer a route around encounter patches. If an exit itself is grass, painting supplies a
+        # lawn verge instead of leaving sand directly against the encounter tiles.
+        near = {(x + dx, y + dy) for x, y in footprint for dx, dy in STEPS}
+        return bad + 2 * len(near & blocked) + 2 * len(footprint & encounter) + 0.25 * len(near & encounter)
 
     danger = {anchor: incompatible_edges(anchor) for anchor in allowed}
     result = []
@@ -232,7 +239,62 @@ def road_family(repo, pair, rules, material='path'):
                                           rules.freq.get(m, 0), -m))
     colour = pixels[interior].most_common(1)[0][0]
     coverage = {m: pixels[m].get(colour, 0) / 256 for m in walk}
-    return {m for m in walk if coverage[m] >= 0.15}, coverage
+    behavior = pair.behavior_name(interior)
+    return {m for m in walk if coverage[m] >= 0.15 and pair.behavior_name(m) == behavior}, coverage
+
+
+def lawn_tiles(grid, rules):
+    """The destination's own lawn vocabulary, ordered by its local use, never a generic grass id."""
+    counts = Counter(c[0] for c in grid.cells if rules.material(c) in ('lawn', 'meadow') and c[1] == 0)
+    if not counts:
+        counts = Counter(c[0] for c in grid.cells if rules.material(c) == 'grass' and c[1] == 0)
+    if not counts:
+        raise PkError('NOTFOUND', 'target map has no walkable lawn tile for a road verge')
+    result = sorted(counts, key=lambda m: (-counts[m], m))
+    # Some vanilla corner sockets use the map's plain lawn variation (tagged grass), between the
+    # patterned lawn tiles. Learn that local variation too; never inject a fixed generic grass id.
+    for cell in grid.cells:
+        mt = cell[0]
+        if mt in result or rules.material(cell) != 'grass' or cell[1]:
+            continue
+        colours = Counter(c for row in meta.draw(grid.repo, rules.pair, mt) for c in row if c)
+        if max(colours.values(), default=0) >= .8 * 256:
+            result.append(mt)
+    return result
+
+
+def _road_patterns(repo, pair, interiors, candidates):
+    """Vanilla 3x3 road-interior masks distinguish straight edges and real inner/outer corners."""
+    key = pair.primary['symbol'], pair.secondary['symbol']
+    patterns = {m: Counter() for m in candidates}
+    offsets = [(dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+    for layout in repo.layouts().values():
+        if str(layout['id']).startswith('LAYOUT_PK_') or (
+                layout.get('primary_tileset'), layout.get('secondary_tileset')) != key:
+            continue
+        w, h = layout['width'], layout['height']
+        source = decode(repo.read(layout['blockdata_filepath'])[:w * h * 2])
+        for y in range(1, h - 1):
+            for x in range(1, w - 1):
+                mt = source[y * w + x][0]
+                if mt in patterns:
+                    mask = tuple(source[(y + dy) * w + x + dx][0] in interiors for dx, dy in offsets)
+                    patterns[mt][mask] += 1
+    return patterns
+
+
+def _road_cells(grid, pair, route_cells, width):
+    """Keep ledge approaches capped; only a vertically traversed existing gap crosses its row."""
+    cells = widened(route_cells, width)
+    ledges = {(x, y) for y in range(grid.h) for x in range(grid.w)
+              if physical_class(pair.behavior_name(grid.at(x, y)[0]), grid.at(x, y)[1]).startswith('ledge')}
+    traversed = set(route_cells)
+    gaps = set()
+    for x, y in route_cells:
+        if (x, y - 1) in traversed and (x, y + 1) in traversed:
+            gaps |= _footprint((x, y), width)
+    band = {(x + dx, y + dy) for x, y in ledges for dx, dy in STEPS}
+    return cells - (band - gaps) - ledges
 
 
 class _PathRules:
@@ -257,7 +319,28 @@ def _paint(repo, grid, pair, route_cells, width, material):
     rules = _PathRules(base, material, family)
     before = list(grid.cells)
     blocked = blocked_cells(repo, grid, pair)
-    cells = widened(route_cells, width) - blocked
+    cells = _road_cells(grid, pair, route_cells, width) - blocked
+    # Leave room for an actual edge/cap tile beside immutable obstacles. A narrow ledge gap remains
+    # a walkable lawn crossing, rather than acquiring an isolated sand stub against a cliff tile.
+    cells = {p for p in cells if not any((p[0] + dx, p[1] + dy) in blocked for dx, dy in STEPS)}
+    lawn = lawn_tiles(grid, base)
+    fixed_grass = set()
+    for y in range(grid.h):
+        for x in range(grid.w):
+            if physical_class(pair.behavior_name(grid.at(x, y)[0]), grid.at(x, y)[1]) != 'grass_enc':
+                continue
+            if (x, y) in blocked:
+                fixed_grass.add((x, y))
+            for dx, dy, table, reverse in ((-1, 0, base.h, True), (1, 0, base.h, False),
+                                           (0, -1, base.v, True), (0, 1, base.v, False)):
+                q = x + dx, y + dy
+                if q not in blocked or not grid.inside(*q):
+                    continue
+                mt = grid.at(*q)[0]
+                if not any(((mt, m) in table if reverse else (m, mt) in table) for m in lawn):
+                    fixed_grass.add((x, y))
+    cells = {p for p in cells if not any((p[0] + dx, p[1] + dy) in fixed_grass
+                                       for dx in range(-2, 3) for dy in range(-2, 3))}
     if not cells:
         raise PkError('CONFLICT', 'path has no safe paint cells')
     all_cells = {(x, y) for y in range(grid.h) for x in range(grid.w)}
@@ -273,41 +356,77 @@ def _paint(repo, grid, pair, route_cells, width, material):
 
 
 def _auto_ring(repo, grid, pair, rules, cells, material, family, coverage, blocked, before):
-    """Retile only the road and its safe one-tile ring, including fixed boundary constraints."""
-    ring = {(x + dx, y + dy) for x, y in cells for dx in (-1, 0, 1) for dy in (-1, 0, 1)
-            if grid.inside(x + dx, y + dy)} - cells - blocked
+    """Two-tile road interior, vanilla corner/edge ring, and one tile of the destination lawn."""
+    def neighbours(points):
+        return {(x + dx, y + dy) for x, y in points for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                if grid.inside(x + dx, y + dy)}
+
+    edge = neighbours(cells) - cells - blocked
+    verge = neighbours(cells | edge) - cells - edge - blocked
+    ring = edge | verge
     editable = cells | ring
-    walk = {m for m, n in rules.freq.items() if n and
-            physical_class(pair.behavior_name(m), 0) == 'walk'}
+    source = _clone(grid)
+    source.cells[:] = before
+    lawn = lawn_tiles(source, rules)
+    walk = set(lawn) | family
+    # Inner-corner tiles have ~88% road colour but are still boundary tiles, not solid interiors.
+    interior = {m for m in family if coverage[m] >= .95}
+    patterns = _road_patterns(repo, pair, interior, walk)
+    offsets = [(dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+    solid = max(interior, key=lambda m: coverage[m])
+    road_palette = {c for row in meta.draw(repo, pair, solid) for c in row if c}
+    side_fill = {}
+    for m in walk:
+        pixels = meta.draw(repo, pair, m)
+        sides = (pixels[0], pixels[-1], [row[0] for row in pixels], [row[-1] for row in pixels])
+        side_fill[m] = tuple(sum(c in road_palette for c in side) >= 15 for side in sides)
+
+    def geometry(m, p):
+        desired = tuple((min(max(p[0] + dx, 0), grid.w - 1),
+                         min(max(p[1] + dy, 0), grid.h - 1)) in cells for dx, dy in offsets)
+        scores = [sum((a != b) * (3 if i in (1, 3, 4, 5, 7) else 1)
+                      for i, (a, b) in enumerate(zip(desired, mask))) for mask in patterns.get(m, {})]
+        wanted_sides = ((True,) * 4 if p in cells else tuple(
+            (p[0] + dx, p[1] + dy) in cells for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0))))
+        side_error = sum(a != b for a, b in zip(wanted_sides, side_fill.get(m, (False,) * 4)))
+        return 100 * side_error + min(scores, default=20)
     directions = ((-1, 0, rules.h, True), (1, 0, rules.h, False),
                   (0, -1, rules.v, True), (0, 1, rules.v, False))
 
     def compatible(a, b, table, reverse):
         return (b, a) in table if reverse else (a, b) in table
 
-    domains = {}
+    domains, flexible = {}, {}
     for p in sorted(editable, key=lambda q: (q[1], q[0])):
-        options = set(family if p in cells else walk)
-        if p in ring:
-            options.add(grid.at(*p)[0])
+        options = set(family if p in cells else family | set(lawn) if p in edge else lawn)
+        if p in cells and any((p[0] + dx, p[1] + dy) in blocked
+                              for dx in range(-2, 3) for dy in range(-2, 3)):
+            options.update(lawn)
+        old = before[p[1] * grid.w + p[0]][0]
+        if p in ring and physical_class(pair.behavior_name(old), 0) == 'walk':
+            options.add(old)
         fixed = [(grid.at(p[0] + dx, p[1] + dy)[0], table, reverse)
                  for dx, dy, table, reverse in directions
                  if grid.inside(p[0] + dx, p[1] + dy)
-                 and (p[0] + dx, p[1] + dy) not in editable]
+                 and (p[0] + dx, p[1] + dy) not in editable and p not in verge]
         fitting = {m for m in options if all(compatible(m, n, t, r) for n, t, r in fixed)}
         # Preserve existing walkable gaps where a ledge requires a grass cap.
         if not fitting and p in cells:
             fitting = {m for m in walk if all(compatible(m, n, t, r) for n, t, r in fixed)}
-        domains[p] = fitting or options
+        # Preserve the requested outline even when a fixed boundary has no fully seen solution.
+        best_shape = min(geometry(m, p) for m in options)
+        shaped = {m for m in options if geometry(m, p) == best_shape}
+        domains[p] = (fitting & shaped) or shaped
+        flexible[p] = set(options) | (set(lawn) if p in cells else set())
 
     # A complete adjacency solution avoids the local minima of iterative single-cell updates.
     # Original tiles remain candidates for caps through narrow grass/ledge passages.
     exact = {}
     for p in sorted(editable):
-        options = walk | {before[p[1] * grid.w + p[0]][0]}
+        options = set(flexible[p])
         for dx, dy, table, reverse in directions:
             q = p[0] + dx, p[1] + dy
-            if not grid.inside(*q) or q in editable:
+            if not grid.inside(*q) or q in editable or p in verge:
                 continue
             fixed = grid.at(*q)[0]
             options = {m for m in options if compatible(m, fixed, table, reverse)}
@@ -342,12 +461,13 @@ def _auto_ring(repo, grid, pair, rules, cells, material, family, coverage, block
         if nodes[0] > 2000:
             return None
         p = min((p for p in sorted(editable) if len(current[p]) > 1),
-                key=lambda p: (len(current[p]), p not in cells, p[1], p[0]), default=None)
+                key=lambda p: (p not in cells, len(current[p]), p[1], p[0]), default=None)
         if p is None:
             return current
         old = before[p[1] * grid.w + p[0]][0]
-        order = sorted(current[p], key=lambda m: (-coverage.get(m, 0) if p in cells else m != old,
-                                                 m != old, -rules.freq.get(m, 0), m))
+        order = sorted(current[p], key=lambda m: (geometry(m, p),
+                                                 -coverage.get(m, 0) if p in cells else m not in lawn,
+                                                 m != old, lawn.index(m) if m in lawn else len(lawn), m))
         for m in order:
             branch = {q: set(values) for q, values in current.items()}
             branch[p] = {m}
@@ -358,7 +478,7 @@ def _auto_ring(repo, grid, pair, rules, cells, material, family, coverage, block
         return None
 
     solution = search(exact) if propagate(exact) else None
-    if solution is not None:
+    if solution is not None and sum(next(iter(solution[p])) in family for p in cells) >= .8 * len(cells):
         for p, values in solution.items():
             old = grid.at(*p)
             grid.set(*p, (next(iter(values)), old[1], old[2]))
@@ -366,11 +486,15 @@ def _auto_ring(repo, grid, pair, rules, cells, material, family, coverage, block
 
     def unary(m, p):
         road = coverage.get(m, 0)
-        return 2.0 * road if p in cells else -0.3 * road
+        if p in cells:
+            return 4.0 * road - 4 * geometry(m, p)
+        return -road - 4 * geometry(m, p) + (0.1 if m in lawn else 0)
 
     targets = {p: material if p in cells else rules.material(grid.at(*p)) for p in editable}
+    seed = {p: min(domains[p], key=lambda m: (geometry(m, p),
+                m != before[p[1] * grid.w + p[0]][0], -rules.freq.get(m, 0), m)) for p in editable}
     solved = terrain.solve(grid, rules, targets, margin=0, choices={p: sorted(v) for p, v in domains.items()},
-                           unary=unary, passes=24, local_weight=0, freq_weight=0, diag_weight=0)
+                           unary=unary, passes=24, local_weight=0, freq_weight=0, diag_weight=0, seed=seed)
     for p, mt in solved.items():
         old = grid.at(*p)
         grid.set(*p, (mt, old[1], old[2]))

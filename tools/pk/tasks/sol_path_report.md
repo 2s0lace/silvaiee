@@ -1,27 +1,30 @@
-# Path improvement report
+# Owner-review revision: Route 1
 
-Road edges tagged `grass` now join the road family through the vanilla interior's dominant colour.
-The constrained join pass freezes objects/events, preserves collision/elevation, and checks every
-entrance in all six ability states. Equal-count replacements of OBJECT warnings are refused too.
+The brush now penalizes encounter grass, requires two straight steps between bends, learns destination
+lawn variants (rather than injecting a grass id), uses vanilla edge/corner masks and road-facing pixel
+sides, and caps approaches to ledges/protected grass. Beach tiles sharing the road colour are excluded.
 
-Inherited scan: 72 outdoor maps; 98 qualifying path/sand components, width median 2/p95 6,
-axis-run p95 8, cross-section width changes 953/2,692 (35.4%). These are axis/cross-section statistics,
-not a validated skeleton measurement between bends; that limitation remains.
+Inherited measurements remain: 72 outdoor maps; width median 2/p95 6, axis-run p95 8,
+cross-section width changes 35.4%. These are not between-bend skeleton statistics.
 
-| Case | New OBJECT | Reach | Straight | Path seams |
-|---|---:|---|---:|---:|
-| Original Route 1 | 0 | unchanged | 8 | 0 |
-| Wiped PkPathTest copy | 0 | unchanged | 8 | **73; target <=5 MISS** |
-| Pallet junctions | deferred after required miss | | | |
+| Wiped Route 1 target | Result |
+|---|---|
+| New OBJECT | 0 |
+| Reach | unchanged, six ability states |
+| Longest straight | 8 (limit 8) |
+| Minimum segment before a bend | 2 |
+| New road/encounter-grass contacts | 0 |
+| Ledge cells | unchanged; routing uses existing gaps |
+| Path seams | **18 (limit 5): MISS**, previously 73 |
+| Distinct options | **2 (target 3): MISS** |
 
-Benchmark wipes all 192 walkable road-family cells in memory. The wipe itself creates 12 existing
-OBJECT sides; painting adds none. Three routes and PNGs are distinct. Of 140 painted footprint cells,
-134 retain road pixels; six remain grass caps.
+Including changed lawn-verge cells gives 70 seams. The unchanged fixture wipes 192 road cells and
+already has 12 broken ledge sides; the path adds none. No target was relaxed. Two existing unit
+assertions also fail: zero seams on original Route 1, and three routes. Generator work stopped at the miss.
 
 Commands:
-`C:/Python314/python.exe -B tools/pk/tests/test_paths.py --benchmark` (exit 1: target miss);
+`C:/Python314/python.exe -B tools/pk/tests/test_paths.py --benchmark` (exit 1);
 `C:/Python314/python.exe -B -m unittest tools.pk.tests.test_paths tools.pk.tests.test_terrain_auto tools.pk.tests.test_objects -v`.
 
-Comparison: `.pk/render/path_route1.png` (original left, attempted path right).
-Weakness: the erased-road fixture still needs better boundary reconstruction. The previous report's
-claim that the path material was inherently insufficient was too strong. No map changes were committed.
+Comparison: `.pk/render/path_route1.png` (vanilla left, revision right).
+Remaining weaknesses: unseen corner/verge joins and insufficient route diversity.

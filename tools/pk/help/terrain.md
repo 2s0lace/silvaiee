@@ -15,7 +15,9 @@ pk terrain path MAP x1,y1 x2,y2 [x3,y3 ...] [--width 2] [--material path|sand] [
  Road families include grass-tagged edge/corner tiles sharing the vanilla road interior's colour.
  Join cleanup freezes objects/events and preserves collision/elevation. Previews mark unsafe fills
  REFUSED; writing checks each entrance in all six ability states. Options/pick accept 1..20.
- Experimental: the wiped Route 1 acceptance fixture still misses its seam limit (see sol_path_report.md).
+ Routes penalize encounter grass and require >=2 straight steps between bends. Cleanup uses the target
+ map's own lawn variants for a verge and vanilla road-facing corners; ledges/objects remain immutable.
+ Experimental: wiped Route 1 has 18 path seams (limit 5) and only 2 options (target 3); see sol_path_report.md.
 pk terrain river MAP x,y x,y ... [width=n] (water path)
 pk terrain ledge MAP x1,y1 x2,y2 [--dir s|n|e|w]
 pk terrain forest MAP rect x,y,WxH --stamp tree (tile a stamp, e.g. a 2x2 tree from pk stamp extract)

@@ -1130,3 +1130,17 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   that required miss; Pallet junctions deferred. Comparison: .pk/render/path_route1.png. The inherited
   width 2/p95 6, axis-run p95 8, width-change 35.4% figures are cross-section statistics, not a validated
   between-bend skeleton measurement. See tasks/sol_path_report.md and tests/test_paths.py --benchmark.
+
+## Owner path review: lawn verges, bends and ledges (2026-10-18, Codex)
+- Applied owner review of path_route1.png: A* penalizes grass_enc cells and obstacle proximity, requires
+  >=2 straight steps before a bend, and retains the inherited max run 8. Painting learns the target's
+  lawn/meadow vocabulary and its locally used plain variations; it never injects a generic grass id.
+- Road-colour matching now also requires the interior's behavior (beach SAND tiles are excluded from
+  NORMAL paths). Vanilla 3x3 interior masks plus rendered road-facing sides select edges/corners.
+  Ledge approaches and protected encounter-grass approaches are capped; fixed ledges are never painted.
+- Same in-memory wiped Route 1 fixture: 192 road cells wiped; 12 pre-existing OBJECT sides from the
+  wipe. Revision adds 0 OBJECT, preserves reach in all six states, longest run 8, min segment 2, zero
+  new road/grass_enc contacts. Path seams 73 -> 18 (limit 5): MISS; including changed verge cells: 70.
+  Only 2 distinct routes (target 3): MISS. STOP, targets unchanged, no Pallet continuation.
+- 26/28 unit tests pass; the original-map zero-seam assertion and three-option assertion still fail.
+  This is a WIP revision, not acceptance. Updated .pk/render/path_route1.png and tasks/sol_path_report.md.
