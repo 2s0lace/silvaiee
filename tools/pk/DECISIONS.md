@@ -1460,3 +1460,47 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - **Benchmark:** round trips 10/10 (13812/13812 cells); rebuilds (leave-one-out) Route 1, Route 22, Pallet
   Town, Route 3, One Island Kindle Road all pass: letters 99.57-100%, 0 new WARN OBJECT, 0 reach lost, 0
   open banks. Part 1's coastal "new map" step is still not done.
+
+## Blockout: one water family per region, small trees are whole trees (2026-10-18, Claude Sonnet)
+- **Problem (coast map, `PkBlockCoast_Frlg`, wiped and re-tiled):** the sea (127 cells, one region) used two open
+  tiles (0x12B and the deep 0x1D9 at the map edges, seams between them) and 21 pond-rim cells (0x120/0x121/0x123)
+  against the beach; a 2x2 `T` group alone in lawn came out as fence posts and a stump (0x0E8 0x0ED 0x0E6 0x0F6).
+- **Water families (learned, never names).** `LetterRules.learn_bodies` splits every vanilla outdoor `~` region into
+  sea (touches the map edge, or more than 40 cells) or pond and records its tiles and its water/non-water neighbours.
+  A family is one open tile (tile card family `open`, class `surf`): the one the kind is mostly made of (0x12B for both
+  kinds), plus its banks: other water tiles that touch it more than any other open tile, a rim corner that touches no
+  open tile following its neighbours. Candidates of a region and of its shore ring (the tiles vanilla puts next to
+  those) are cut to it before any solve; a cell with no family tile widens its context one step per round
+  (`INFO BLOCKOUT widen ... reason:water region:N`), it never lets a second family in. New hard rule in
+  `hard_solve`: water touching a sand cell must be open water. Per region the tiler prints
+  `INFO BLOCKOUT water region:N size kind families-used outside-family tiles`; more than one family, or a tile outside it,
+  is a `WARN` and makes the proposal unsafe.
+- **Shores are sand (classifier).** Vanilla draws every sandy shore with walkable shallow-water tiles (0x10C, 0x114, 0x116,
+  0x11C-0x11E, 0x12D, 0x12E...), which exported as `p`. They export as `s` now (behaviour class, not name), so
+  a drawn `s` next to `~` can learn the vanilla shore pieces; before, a beach could only be fidelity-clean with pond rims.
+  Round trips are unaffected (export is the reference); the benchmark was re-run.
+- **Small trees.** A `T` region of 8 cells or fewer (`SMALL_TREE`) is covered exactly by whole vanilla trees: rectangles of at
+  least 2x2 wall-class tiles that vanilla draws alone in a lawn (`LetterRules.tree_templates`, most frequent first;
+  a one-cell-wide rectangle is a post or a rock). The tree is pinned, the ring solved under the hard object rules; a ring cell
+  with no tile (a cap under tall grass) widens one step. No tree fits: lawn plus
+  `INFO BLOCKOUT tree group x,y left as lawn (no whole tree fits)`, never fence or rock. A wall-class tile is the test:
+  the stump tiles are walkable tiles blocked by collision, which exported as `T` because of their colour.
+- **Object letters survive.** After the solve every `T`, `r` and `n` cell must export as its letter
+  (`INFO BLOCKOUT object letters T:88/88 survived`); a lost one is `WARN BLOCKOUT object letter lost x,y` and makes the
+  proposal unsafe. Cells left as lawn on purpose are the one reported exception.
+- **Hard contradictions widen.** A window of `sectioned_solve` that fails now widens the context of the cells where it
+  failed (printed) before it splits; a map-edge sand cell that only had plain sand above open water needed it.
+- **Coast, before -> after:** water families 2 -> 1 (0x12B 127/127 cells), rim cells 21 -> 0, stump/post cells 4 -> 0, both tree groups
+  are 0x01E 0x01F / 0x026 0x027 with caps, `T` letters 88/88, WARN OBJECT 0, fidelity 100.00%, lint seams 79 -> 72, rare 33 -> 15.
+  Render `.pk/render/coast_v2.png` (before: `coast_v1.png`).
+- **Tests:** `python tools/pk/tests/test_blockout.py` -> 67 tests PASS (24 new: water families, widening, shore rule,
+  whole trees, real vanilla families, the coast map).
+- **Benchmark (`--benchmark`):** round trips 10/10 = 13812/13812; rebuilds Route 1 100.00%, Route 22 99.13%, Pallet Town
+  98.96%, Route 3 99.64%, One Island Kindle Road 99.97%: 0 new WARN OBJECT, 0 reach lost, 0 open banks (same targets as
+  before: letters >=95%). The small `T` groups of vanilla maps are mostly fence-like, not trees, so the new rule turns
+  them into lawn (INFO printed): object letters lost or lawned 10 (Route 22), 5 (Pallet), 6 (Route 3), 1 (Kindle Road).
+  Where not even lawn fits the ring the group keeps its earlier tiles (printed `kept its previous assignment`: Route 22 4,
+  Route 3 15, Kindle Road 6 groups); Route 22 also has 5 lost letters (`WARN BLOCKOUT object letter lost`), so `tile()`
+  reports it unsafe, which the benchmark does not use. A first run stopped on Pallet with 2 open banks: the sea family
+  left out the rim corners (they touch no open tile); banks now follow their neighbours.
+- No game-map data outside the test map, no `pk build`, no `pk bp apply`, no push.

@@ -26,6 +26,16 @@ if not (ROOT / 'data/maps/Route1_Frlg').is_dir():
     ROOT = next((p for p in ROOT.parents if (p / 'data/maps/Route1_Frlg').is_dir()), ROOT)
 
 
+_SHARED = []
+
+
+def shared_repo():
+    """One Repo for the tests that build the learned rules (about two minutes each time)."""
+    if not _SHARED:
+        _SHARED.append(Repo(ROOT))
+    return _SHARED[0]
+
+
 class Format(unittest.TestCase):
     def test_roundtrip_and_fixed_alphabet(self):
         rows = ['T.pg~', 'srvfb', '^<>.n']
@@ -573,6 +583,325 @@ class ObjectRegions(unittest.TestCase):
                 self.assertEqual(set(grid.cells), {(3, 1, 0)})
             else:
                 self.assertEqual(grid.cells, before)
+
+
+class WaterFamilies(unittest.TestCase):
+    """One water family per connected water region; the sea shore against sand is a vanilla shore."""
+    class Choices(dict):
+        """The bits of ContextDomains that restrict_water and small_tree_region use."""
+        def __init__(self, domains, ladder):
+            super().__init__(domains)
+            self.ladder, self.levels = ladder, {p: 0 for p in domains}
+
+        def widen(self, p, reason):
+            self.levels[p] += 1
+            self[p] = self.ladder[self.levels[p]]
+            return f'INFO BLOCKOUT widen {p[0]},{p[1]} test->test candidates:{len(self[p])} reason:{reason}'
+
+    def test_shallow_water_shore_is_sand_not_path(self):
+        repo = Repo(ROOT)
+        _, pair = load(repo, 'PalletTown_Frlg')
+        classify = blockout.classifier(repo, pair)
+        for mt in (0x10C, 0x11D, 0x114, 0x116, 0x12E):   # sand edges drawn with shallow water behaviour
+            with self.subTest(mt=hex(mt)):
+                self.assertEqual(classify.letter((mt, 0, 3)), 's')
+        self.assertEqual(classify.letter((0x12B, 0, 1)), '~')
+
+    def test_kind_is_sea_when_touching_the_edge_or_large_else_pond(self):
+        edge = ['~~...', '.....', '.....']
+        self.assertEqual([k for _, k in blockout.water_bodies(edge, 5, 3)], ['sea'])
+        pond = ['.....', '.~~..', '.....']
+        self.assertEqual([k for _, k in blockout.water_bodies(pond, 5, 3)], ['pond'])
+        lake = ['.' * 12] + ['.' + '~' * 10 + '.'] * 5 + ['.' * 12]      # 50 cells, enclosed
+        self.assertEqual([k for _, k in blockout.water_bodies(lake, 12, 7)], ['sea'])
+
+    def test_each_region_is_cut_to_its_family_and_its_shore_ring(self):
+        rows = ['.....', '.~~~.', '.....', '.....', '..~..']
+        grid = SimpleNamespace(w=5, h=5)
+        rules = SimpleNamespace(water_family=lambda kind: (1, frozenset({1, 2}), frozenset({8})) if kind == 'pond'
+                                else (3, frozenset({3}), frozenset({9})))
+        active = {(x, y): [1, 2, 3, 8, 9] for y in range(5) for x in range(5)}
+        notes, families = blockout.restrict_water(rules, rows, grid, active)
+        self.assertEqual(active[2, 1], [1, 2])              # pond water: its own family only
+        self.assertEqual(active[2, 0], [8])                 # shore ring: what vanilla puts next to the pond
+        self.assertEqual(active[2, 4], [3])                 # touches the edge: the sea family
+        self.assertEqual(active[1, 4], [9])
+        self.assertEqual(active[0, 2], [1, 2, 3, 8, 9])     # not next to water: untouched
+        self.assertEqual({k: v[1] for k, v in families.items()}, {1: 'pond', 2: 'sea'})
+        self.assertTrue(any('region:1 size:3 kind:pond family:0x001' in n for n in notes))
+
+    def test_a_cell_with_no_family_tile_widens_its_context_before_anything_else(self):
+        rows = ['~.', '..']
+        grid = SimpleNamespace(w=2, h=2)
+        rules = SimpleNamespace(water_family=lambda kind: (1, frozenset({1}), frozenset({8})))
+        domains = self.Choices({(0, 0): [5, 6]}, {1: [1, 5]})
+        active = {(0, 0): [5, 6]}
+        notes, _ = blockout.restrict_water(rules, rows, grid, active, domains)
+        self.assertEqual(active[0, 0], [1])
+        self.assertTrue(any('INFO BLOCKOUT widen 0,0' in n and 'water region:1' in n for n in notes))
+        self.assertTrue(any('widened-cells:1 unrestricted-cells:0' in n for n in notes))
+
+    def test_without_widening_left_a_cell_unrestricted_is_reported_not_silent(self):
+        rows = ['~.', '..']
+        rules = SimpleNamespace(water_family=lambda kind: (1, frozenset({1}), frozenset({8})))
+        active = {(0, 0): [5, 6]}
+        notes, _ = blockout.restrict_water(rules, rows, SimpleNamespace(w=2, h=2), active)
+        self.assertEqual(active[0, 0], [5, 6])
+        self.assertTrue(any('unrestricted-cells:1' in n for n in notes))
+        self.assertTrue(any('kept an unrestricted domain' in n for n in notes))
+
+    def test_family_is_one_open_tile_plus_the_banks_that_belong_to_it(self):
+        rules = SimpleNamespace(
+            water_open={1, 4}, water_kind={'sea': Counter({1: 90, 4: 30, 2: 5}), 'pond': Counter()},
+            # 2 touches the main open tile most; 3 touches the deep tile most; 5 touches no open tile at all
+            # (a rim corner between rim pieces) and follows its neighbour 2.
+            water_adj={'sea': {1: Counter({2: 9, 3: 1}), 2: Counter({1: 5, 4: 1, 5: 4}), 3: Counter({4: 6, 1: 1}),
+                               4: Counter({3: 6}), 5: Counter({2: 4})}, 'pond': {}},
+            ring_adj={'sea': {1: {10}, 2: {11}, 3: {12}, 4: {13}, 5: {14}}, 'pond': {}})
+        main, allowed, shore = blockout.family_of(rules, 'sea')
+        self.assertEqual(main, 1)
+        self.assertEqual(allowed, {1, 2, 5})
+        self.assertEqual(shore, {10, 11, 14})
+        self.assertIsNone(blockout.family_of(rules, 'pond'))
+
+    def test_a_hard_contradiction_widens_the_conflicting_cell_before_the_window_splits(self):
+        grid = HardConstraints.Grid(w=1, h=1)
+        grid.cells = [(8, 0, 3)]
+        domains = self.Choices({(0, 0): [8]}, {1: [8, 9]})
+        active = {(0, 0): [8]}
+        bits = {(0, 0): {8: (8, 0, 3), 9: (9, 0, 3)}}
+        replies = [dict(ok=False, assignment={}, steps=1, reason='hard contradiction', conflict=[(0, 0)]),
+                   dict(ok=True, assignment={(0, 0): 9}, steps=1, reason='', conflict=[])]
+        with patch.object(blockout, 'hard_solve', side_effect=replies) as solve:
+            solved, notes = blockout.sectioned_solve(None, grid, None, ['.'], SimpleNamespace(), active, active,
+                                                     bits, {(0, 0)}, {}, True, 'rest', domains, {})
+        self.assertEqual(solve.call_count, 2)
+        self.assertEqual(solved, {(0, 0)})
+        self.assertEqual(grid.at(0, 0), (9, 0, 3))
+        self.assertTrue(any(n.startswith('INFO BLOCKOUT widen 0,0') and 'rest window' in n for n in notes))
+
+    def test_widen_cell_keeps_the_family_restriction(self):
+        domains = self.Choices({(0, 0): [5]}, {1: [1, 2, 5], 2: [1, 2, 5], 3: [1, 2, 5]})
+        active = {(0, 0): [5]}
+        row = blockout.widen_cell(domains, active, {(0, 0): frozenset({1, 2})}, (0, 0), 'test')
+        self.assertTrue(row.startswith('INFO BLOCKOUT widen 0,0'))
+        self.assertEqual(active[0, 0], [1, 2])
+        blockout.widen_cell(domains, active, {}, (0, 0), 'test')
+        blockout.widen_cell(domains, active, {}, (0, 0), 'test')
+        self.assertIsNone(blockout.widen_cell(domains, active, {}, (0, 0), 'test'))   # ladder exhausted
+
+    def test_report_counts_open_water_families_per_region(self):
+        rules = SimpleNamespace(water_open={1, 4})
+        grid = HardConstraints.Grid(w=2, h=1)
+        body = {(0, 0), (1, 0)}
+        grid.cells = [(1, 0, 1), (1, 0, 1)]
+        notes, bad = blockout.water_report(rules, grid, {1: (body, 'sea', 1, frozenset({1, 2}))})
+        self.assertEqual(bad, 0)
+        self.assertIn('families-used:1 outside-family:none', notes[0])
+        grid.cells = [(1, 0, 1), (4, 0, 1)]            # a second open tile (deep sea) in the same region
+        notes, bad = blockout.water_report(rules, grid, {1: (body, 'sea', 1, frozenset({1, 2}))})
+        self.assertEqual(bad, 1)
+        self.assertIn('families-used:2 outside-family:0x004', notes[0])
+
+    def solve_shore(self, water_tiles, open_water):
+        class Glue:
+            def __init__(self, *args):
+                pass
+
+            def objectish(self, cell):
+                return False
+
+            def broken_side(self, *args, **kwargs):
+                return None
+        grid = HardConstraints.Grid(w=1, h=2)
+        rows = ['~', 's']
+        choices = {(0, 0): water_tiles, (0, 1): [10]}
+        bits = {(0, 0): {mt: (mt, 0, 1) for mt in water_tiles}, (0, 1): {10: (10, 0, 3)}}
+        rules = SimpleNamespace(material=lambda cell: '~' if cell[0] < 10 else 's', freq={}, h={},
+                                v={(1, 10): 5, (2, 10): 5}, water_open=open_water)
+        with patch.object(blockout.objects, 'Glue', Glue):
+            return blockout.hard_solve(None, grid, None, rows, rules, choices, bits)
+
+    def test_sand_next_to_water_needs_open_water_a_rim_never_sits_on_a_beach(self):
+        self.assertEqual(self.solve_shore([1, 2], {1})['assignment'][0, 0], 1)
+        refused = self.solve_shore([2], {1})
+        self.assertFalse(refused['ok'])
+        # Without water data (older rules, other fixtures) the old pair rule alone applies.
+        self.assertTrue(self.solve_shore([2], None)['ok'])
+
+
+class WaterLearned(unittest.TestCase):
+    """Real vanilla data (builds the learned rules once, about two minutes)."""
+    @classmethod
+    def setUpClass(cls):
+        cls.repo = shared_repo()
+        _, cls.pair = load(cls.repo, 'PalletTown_Frlg')
+        cls.rules = blockout.learned(cls.repo, cls.pair)
+
+    def test_sea_family_is_one_open_tile_with_its_banks(self):
+        main, allowed, shore = self.rules.water_family('sea')
+        self.assertIn(main, self.rules.water_open)
+        self.assertEqual(allowed & self.rules.water_open, {main})   # a deep open tile is another family
+        self.assertTrue(allowed - {main}, 'banks vanilla puts next to the open tile')
+        self.assertTrue(shore)
+
+    def test_open_water_comes_from_cards_not_names(self):
+        cards_ = blockout.classifier(self.repo, self.pair).cards
+        self.assertTrue(self.rules.water_open)
+        for mt in self.rules.water_open:
+            self.assertEqual((cards_[mt]['cls'], cards_[mt]['family']), ('surf', 'open'))
+
+    def test_vanilla_small_trees_are_wall_rectangles(self):
+        self.assertTrue(self.rules.tree_templates)
+        cards_ = blockout.classifier(self.repo, self.pair).cards
+        for tpl in self.rules.tree_templates:
+            self.assertLessEqual(sum(len(row) for row in tpl), blockout.SMALL_TREE)
+            self.assertTrue(all(cards_[c[0]]['cls'] == 'wall' for row in tpl for c in row))
+        self.assertTrue(any(len(tpl) >= 2 and len(tpl[0]) >= 2 for tpl in self.rules.tree_templates))
+
+
+class SmallTrees(unittest.TestCase):
+    """A small T group is filled with whole vanilla trees or left as lawn; never fence posts or stumps."""
+    TREE = (((30, 1, 0), (31, 1, 0)), ((38, 1, 0), (39, 1, 0)))
+    POST = (((106, 1, 0),),)
+    ROW = (((30, 1, 0), (31, 1, 0), (30, 1, 0), (31, 1, 0)), ((38, 1, 0), (37, 1, 0), (36, 1, 0), (39, 1, 0)))
+
+    def test_covers_use_whole_trees_only_never_a_post(self):
+        templates = Counter({self.POST: 99, self.TREE: 5})       # the post is the most frequent template
+        cover = blockout.tree_covers({(1, 1), (2, 1), (1, 2), (2, 2)}, templates)
+        self.assertEqual(len(cover), 1)
+        self.assertEqual(sorted(c[0] for c in cover[0].values()), [30, 31, 38, 39])
+        self.assertEqual(blockout.tree_covers({(1, 1)}, templates), [])          # one cell: no whole tree
+        self.assertEqual(blockout.tree_covers({(0, 0), (1, 0)}, templates), [])  # 2x1: a fence, not a tree
+
+    def test_two_trees_side_by_side_are_covered_exactly(self):
+        templates = Counter({self.TREE: 5, self.ROW: 1})
+        region = {(x, y) for x in range(4) for y in range(2)}
+        covers = blockout.tree_covers(region, templates)
+        self.assertTrue(covers)
+        self.assertTrue(all(set(c) == region for c in covers))
+
+    def fixture(self):
+        grid = Forest.Grid()
+        grid.w = grid.h = 4
+        grid.cells = [(8, 0, 3)] * 16
+        rows = ['....', '.TT.', '.TT.', '....']
+        component = {(1, 1), (2, 1), (1, 2), (2, 2)}
+        region = {(x, y) for y in range(4) for x in range(4)}
+        forced = {p: [8] for p in region}
+        bits = {p: {8: (8, 0, 3)} for p in region}
+        rules = SimpleNamespace(material=lambda cell: 'T' if cell[1] else '.', freq={8: 1},
+                                letters={'.': Counter({(8, 0, 3): 1})}, tree_templates=Counter())
+        glue = SimpleNamespace(broken_side=lambda *a, **k: None)
+        return grid, rows, component, region, forced, bits, rules, glue
+
+    def test_no_whole_tree_leaves_lawn_and_says_so(self):
+        grid, rows, component, region, forced, bits, rules, glue = self.fixture()
+        lawn = set()
+        with patch.object(blockout.objects, 'Glue', return_value=glue), \
+             patch.object(blockout, 'hard_solve', return_value=dict(
+                 ok=True, assignment={p: 8 for p in region}, steps=1, reason='', conflict=[])):
+            notes = blockout.small_tree_region(None, grid, None, rows, rules, forced, bits, component,
+                                               region, 1, 1, lawn)
+        self.assertIn('INFO BLOCKOUT tree group 1,1 left as lawn (no whole tree fits)', notes)
+        self.assertEqual(lawn, component)
+        self.assertEqual({grid.at(*p) for p in component}, {(8, 0, 3)})
+
+    def test_a_whole_tree_is_pinned_and_the_ring_solved_around_it(self):
+        grid, rows, component, region, forced, bits, rules, glue = self.fixture()
+        rules.tree_templates = Counter({self.TREE: 3})
+        ring = region - component
+        lawn = set()
+        with patch.object(blockout.objects, 'Glue', return_value=glue), \
+             patch.object(blockout, 'hard_solve', return_value=dict(
+                 ok=True, assignment={p: 8 for p in ring}, steps=7, reason='', conflict=[])) as solve:
+            notes = blockout.small_tree_region(None, grid, None, rows, rules, forced, bits, component,
+                                               region, 1, 1, lawn)
+        self.assertEqual(solve.call_args.args[7], ring)              # only the ring is solved
+        self.assertEqual([grid.at(*p)[0] for p in sorted(component, key=lambda p: (p[1], p[0]))], [30, 31, 38, 39])
+        self.assertEqual(lawn, set())
+        self.assertTrue(any('whole-tree region:1/1 symbol:T size:4 template:0x01E 0x01F 0x026 0x027' in n
+                            for n in notes))
+
+    def test_broken_object_side_rejects_the_tree_and_restores_the_cells(self):
+        grid, rows, component, region, forced, bits, rules, glue = self.fixture()
+        rules.tree_templates = Counter({self.TREE: 3})
+        glue.broken_side = lambda *a, **k: ('top', 1, 2, False) if grid.at(1, 1)[0] == 30 else None
+        lawn = set()
+        with patch.object(blockout.objects, 'Glue', return_value=glue), \
+             patch.object(blockout, 'hard_solve', return_value=dict(
+                 ok=True, assignment={p: 8 for p in region - component}, steps=1, reason='', conflict=[])):
+            notes = blockout.small_tree_region(None, grid, None, rows, rules, forced, bits, component,
+                                               region, 1, 1, lawn)
+        self.assertNotIn(30, [c[0] for c in grid.cells])
+        self.assertTrue(any('left as lawn' in n for n in notes))
+
+    def test_ring_cell_without_a_tree_tile_widens_one_step(self):
+        grid, rows, component, region, forced, bits, rules, glue = self.fixture()
+        rules.tree_templates = Counter({self.TREE: 3})
+        domains = WaterFamilies.Choices({p: [8] for p in region}, {1: [8, 9]})
+        replies = [dict(ok=False, assignment={}, steps=0, reason='empty hard domain', conflict=[(1, 0)]),
+                   dict(ok=True, assignment={p: 8 for p in region - component}, steps=2, reason='', conflict=[])]
+        bits[1, 0] = {8: (8, 0, 3), 9: (9, 0, 3)}
+        with patch.object(blockout.objects, 'Glue', return_value=glue), \
+             patch.object(blockout, 'hard_solve', side_effect=replies):
+            notes = blockout.small_tree_region(None, grid, None, rows, rules, forced, bits, component,
+                                               region, 1, 1, set(), domains)
+        self.assertTrue(any(n.startswith('INFO BLOCKOUT widen 1,0') for n in notes))
+        self.assertEqual(forced[1, 0], [8, 9])
+        self.assertTrue(any('whole-tree region:1/1' in n for n in notes))
+
+    def test_small_regions_route_to_whole_trees(self):
+        grid = HardConstraints.Grid(w=3, h=3)
+        rows = ['...', '.T.', '...']
+        choices = {(x, y): [8] for y in range(3) for x in range(3)}
+        bits = {p: {8: (8, 0, 0)} for p in choices}
+        rules = SimpleNamespace(material=lambda cell: '.', context3={}, tree_templates=Counter())
+        with patch.object(blockout, 'small_tree_region', return_value=['INFO routed']) as small,              patch.object(blockout, 'learning_reference', side_effect=PkError('TEST', 'skip WFC')):
+            notes = blockout.object_regions(None, grid, None, rows, rules, choices, bits)
+        self.assertEqual(small.call_count, 1)
+        self.assertIn('INFO routed', notes)
+
+
+class Coast(unittest.TestCase):
+    """The coast map (24x20: sea, beach, two tree groups) tiled from a wiped lawn with the vanilla rules."""
+    BLOCKOUT = '.pk/blockout/coast.txt'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.repo = shared_repo()
+        if not (ROOT / cls.BLOCKOUT).is_file() or not (ROOT / 'data/layouts/PkBlockCoast_Frlg').is_dir():
+            raise unittest.SkipTest('coast map or .pk/blockout/coast.txt missing')
+        cls.grid, cls.pair = load(cls.repo, 'PkBlockCoast_Frlg')
+        cls.rows = blockout.parse((ROOT / cls.BLOCKOUT).read_text('utf-8'), cls.grid.w, cls.grid.h)
+        cls.grid.cells = [(0x010, 0, 3)] * len(cls.grid.cells)
+        cls.report = blockout.tile(cls.repo, cls.grid, cls.pair, cls.rows)
+
+    def test_safe_and_no_new_object_warnings(self):
+        self.assertTrue(self.report['safe'], self.report['rows'][-12:])
+        self.assertEqual(self.report['added'], 0)
+        self.assertFalse(any(r.startswith('WARN OBJECT') for r in self.report['rows']))
+
+    def test_every_water_region_uses_one_family(self):
+        lines = [r for r in self.report['rows'] if r.startswith('INFO BLOCKOUT water region:') and 'families-used' in r]
+        self.assertTrue(lines)
+        self.assertTrue(all('families-used:1 outside-family:none' in r for r in lines), lines)
+
+    def test_sandy_shore_not_pond_rim(self):
+        rim = {0x120, 0x121, 0x122, 0x123, 0x124}
+        for y in range(self.grid.h):
+            for x in range(self.grid.w):
+                if self.rows[y][x] == '~':
+                    self.assertNotIn(self.grid.at(x, y)[0], rim, (x, y))
+
+    def test_tree_letters_survive_as_whole_trees(self):
+        actual = blockout.export(self.repo, self.grid, self.pair)
+        cards_ = blockout.classifier(self.repo, self.pair).cards
+        for y in range(self.grid.h):
+            for x in range(self.grid.w):
+                if self.rows[y][x] in 'Trn':
+                    self.assertEqual(actual[y][x], self.rows[y][x], (x, y))
+                    self.assertEqual(cards_[self.grid.at(x, y)[0]]['cls'], 'wall', (x, y))   # no stump, no post
 
 
 def benchmark(rebuilds_only=False):

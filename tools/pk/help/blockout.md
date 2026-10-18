@@ -51,6 +51,22 @@ permit all self-neighbours. Otherwise report why no dominant interior was pinned
 Solve the remaining two-cell boundary/rim jointly with WFC/context candidates and
 hard objects; validate the whole interior+band before acceptance. Failure rolls
 back the whole region. Report symbol, size, interior/band sizes and solver steps.
+Water families: every connected ~ region is one body (4-neighbour). Like the vanilla bodies it is learned
+from, it is sea when it touches the map edge or has more than 40 cells, otherwise pond. Its family is the open
+tile (tile card family open, class surf) that vanilla bodies of that kind are mostly made of, plus the other water
+tiles that touch it more than they touch any other open tile (its banks), plus, for the cells around the region,
+the tiles vanilla puts next to those. Candidates are cut to the family before the solve: a cell with no family
+tile widens its context one step at a time (INFO widen ... reason:water region:N), never lets a second family in.
+Hard rule: water touching a sand cell must be open water, so a pond rim never sits on a beach. Walkable shallow-
+water tiles are sand (s), because vanilla draws every sandy shore with them. Report per region:
+INFO BLOCKOUT water region:N size kind families-used outside-family tiles; WARN if families-used is not 1.
+Small trees: a T region of 8 cells or fewer is filled with whole vanilla trees only: rectangles at least 2x2 of
+wall-class tiles that vanilla draws alone in a lawn (learned, most frequent first), pinned, with the ring around
+them solved under the hard object rules (a ring cell with no tile widens one step). If no whole tree fits the
+cells become lawn and the tiler prints INFO BLOCKOUT tree group x,y left as lawn (no whole tree fits); fence posts,
+stumps and rock never stand in for a tree. After the solve every T, r and n cell must export as its letter
+(INFO BLOCKOUT object letters ... survived; WARN ... lost makes the proposal unsafe); left-as-lawn cells are the
+one reported exception.
 Each connected ledge row is also one atomic pass (horizontal for v/^, vertical
 for </>). Finish the rest/lawn without overwriting forest or ledge phases.
 WFC and pair proposals must pass exact Glue.broken_side constraints, with arc
@@ -117,3 +133,5 @@ digit per cell (the game's walking height). Export always writes it; the tiler a
 Without it each tile gets its usual vanilla height (fine for flat maps; plateaus need it).
 Large maps are solved in overlapping 24x24 windows (stride 16) when the whole-map solve hits a contradiction;
 remnants get a soft fill that never breaks an object.
+Water/tree acceptance: python tools/pk/tests/test_blockout.py (67 tests; WaterLearned and Coast build the learned rules,
+about two minutes). Coast map: .pk/render/coast_v2.png.

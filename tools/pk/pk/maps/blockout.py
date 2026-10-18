@@ -24,6 +24,8 @@ LEGEND = 'legend T=trees n=fence .=lawn p=path g=tallgrass ~=water s=sand r=rock
 LETTERS = frozenset('Tn.pg~srv^<>fb')
 OBJECT_LETTERS = frozenset('Trn')
 WALK = frozenset('.pgsf')
+WATER_SEA_CELLS = 40   # a vanilla water body larger than this, or touching the map edge, is sea
+SMALL_TREE = 8         # a T region this small is filled with whole vanilla trees only
 LEDGE_SYMBOL = {'ledge_s': 'v', 'ledge_n': '^', 'ledge_w': '<', 'ledge_e': '>'}
 LEDGE_STEP = {'v': (0, 1), '^': (0, -1), '<': (-1, 0), '>': (1, 0)}
 
@@ -118,7 +120,9 @@ class Classifier:
             char = LEDGE_SYMBOL[cls]
         elif cls == 'door':
             char = 'b'
-        elif 'SAND' in behavior and not coll:
+        elif ('SAND' in behavior or 'SHALLOW_WATER' in behavior) and not coll:
+            # Vanilla draws a beach edge (sand touching the sea) with walkable shallow-water tiles; they
+            # are sand cells, not path cells. As 'p' they made every sandy shore a letter mismatch.
             char = 's'
         else:
             pixels = [rgb for row in draw(self.repo, self.pair, mt) for rgb in row if rgb]
@@ -311,6 +315,12 @@ class LetterRules(terrain.Rules):
         self.context3, self.context4, self.letters = {}, {}, {}
         self.sources = []
         self.portable_cells = self.class_mismatches = 0
+        # Water bodies by kind (sea: touches the map edge or is large; pond: small and enclosed) and the
+        # whole small trees vanilla draws alone in a lawn (rectangles of 8 cells or fewer, wall tiles only).
+        self.water_kind = {'sea': Counter(), 'pond': Counter()}
+        self.water_adj = {'sea': {}, 'pond': {}}     # water tile -> Counter of water tiles next to it, per kind of body
+        self.ring_adj = {'sea': {}, 'pond': {}}      # water tile -> non-water tiles next to it, per kind
+        self.tree_templates = Counter()
         for name, _ in vanilla_outdoor(repo):
             grid, source_pair = load(repo, name)
             if source_pair.primary['symbol'] != pair.primary['symbol'] or source_pair.version != pair.version:
@@ -343,6 +353,58 @@ class LetterRules(terrain.Rules):
                             other = grid.at(x + dx, y + dy)[0]
                             if own or other < limit:
                                 table[mt, other] += 1
+            self.learn_bodies(grid, rows, own, limit)
+        self.learn_water_families()
+
+    def learn_bodies(self, grid, rows, own, limit):
+        """Vanilla water bodies by kind, and small whole trees (rectangles of wall tiles)."""
+        def usable(p):
+            mt = grid.at(*p)[0]
+            return own or mt < limit
+        cells = {(x, y) for y in range(grid.h) for x in range(grid.w) if rows[y][x] == '~'}
+        for body in connected_regions(cells):
+            edge = any(x in (0, grid.w - 1) or y in (0, grid.h - 1) for x, y in body)
+            kind = 'sea' if edge or len(body) > WATER_SEA_CELLS else 'pond'
+            inside = set(body)
+            for p in body:
+                if not usable(p):
+                    continue
+                a = grid.at(*p)[0]
+                self.water_kind[kind][a] += 1
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    q = p[0] + dx, p[1] + dy
+                    if not grid.inside(*q) or not usable(q):
+                        continue
+                    b = grid.at(*q)[0]
+                    if q in inside:
+                        if a != b:
+                            self.water_adj[kind].setdefault(a, Counter())[b] += 1
+                    else:
+                        self.ring_adj[kind].setdefault(a, set()).add(b)
+        cards_ = self.classify.cards
+        for body in connected_regions({(x, y) for y in range(grid.h) for x in range(grid.w)
+                                       if rows[y][x] == 'T'}):
+            xs, ys = [x for x, _ in body], [y for _, y in body]
+            x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+            if len(body) > SMALL_TREE or len(body) != (x1 - x0 + 1) * (y1 - y0 + 1):
+                continue
+            if x0 == 0 or y0 == 0 or x1 == grid.w - 1 or y1 == grid.h - 1:
+                continue                      # cut by the map edge: not a whole tree
+            if not all(usable(p) and cards_.get(grid.at(*p)[0], {}).get('cls') == 'wall' for p in body):
+                continue
+            self.tree_templates[tuple(tuple(grid.at(x, y) for x in range(x0, x1 + 1))
+                                      for y in range(y0, y1 + 1))] += 1
+
+    def learn_water_families(self):
+        """Open water = tiles whose card family is 'open' (surrounded by their own class). Names are never
+        read. A water family is one open tile plus the banks vanilla puts next to it (see water_family)."""
+        cards_ = self.classify.cards
+        water = self.by_mat.get('~', set())
+        self.water_open = {mt for mt in water if cards_.get(mt, {}).get('family') == 'open'
+                           and cards_.get(mt, {}).get('cls') == 'surf'}
+
+    def water_family(self, kind):
+        return family_of(self, kind)
 
     def material(self, cell):
         return self.classify.letter(cell)
@@ -719,13 +781,18 @@ def hard_solve(repo, grid, pair, rows, rules, choices, cell_bits, region=None,
         return steps <= step_limit and time.monotonic() < deadline
 
     bank_h, bank_v = getattr(rules, 'h', {}), getattr(rules, 'v', {})
+    open_water = getattr(rules, 'water_open', None)
 
     def bank_ok(p, a, q, b, side):
         """Water next to a walkable letter must be a contact vanilla uses (a pond rim, a shore); plain
-        open water against lawn is never a bank. Hard, like the object rules."""
+        open water against lawn is never a bank. Hard, like the object rules. Water touching sand must
+        be open water (the sea shore is drawn in the sand tile); a pond rim never sits on a beach."""
         lp, lq = rows[p[1]][p[0]], rows[q[1]][q[0]]
         if not ((lp == '~' and lq in WALK) or (lq == '~' and lp in WALK)):
             return True
+        if open_water is not None and ((lp == '~' and lq == 's' and a not in open_water) or
+                                       (lq == '~' and lp == 's' and b not in open_water)):
+            return False
         if side == 'E':
             return (a, b) in bank_h
         if side == 'W':
@@ -923,8 +990,223 @@ def interior_plan(repo, grid, pair, rows, rules, forced, cell_bits, component, s
     return {}, f'no common self-compatible context interior tile candidates:{len(ranked)}'
 
 
-def object_regions(repo, grid, pair, rows, rules, choices, cell_bits, exclude=(), symbols=OBJECT_LETTERS):
+def water_bodies(rows, w, h):
+    """Connected '~' regions of the target letters: (cells, kind). Sea touches the map edge or is large."""
+    cells = {(x, y) for y in range(h) for x in range(w) if rows[y][x] == '~'}
+    out = []
+    for body in connected_regions(cells):
+        edge = any(x in (0, w - 1) or y in (0, h - 1) for x, y in body)
+        out.append((body, 'sea' if edge or len(body) > WATER_SEA_CELLS else 'pond'))
+    return sorted(out, key=lambda item: min((y, x) for x, y in item[0]))
+
+
+def family_of(rules, kind):
+    """What vanilla uses for this kind of water body: (the open tile it is mostly made of, every water
+    tile allowed = that tile plus the non-open water tiles seen next to it in bodies of this kind,
+    the non-water tiles seen next to any of those). None without data. One open tile per region: a second
+    open tile (deep sea inside a shallow shore) is a different family."""
+    counts = Counter({mt: n for mt, n in rules.water_kind[kind].items() if mt in rules.water_open})
+    if not counts:
+        return None
+    main = counts.most_common(1)[0][0]
+    # A bank belongs to the open tile it touches most; a rim corner that touches no open tile at all
+    # (it sits between two rim pieces) belongs to the family its neighbours belong to. A deep-water edge
+    # that mostly touches deep water is a bank of the deep family even if it sometimes touches this one.
+    adj, homes = rules.water_adj[kind], {}
+    for bank, touching in adj.items():
+        if bank in rules.water_open:
+            continue
+        votes = Counter({o: touching[o] for o in rules.water_open if touching[o]})
+        if votes:
+            homes[bank] = votes.most_common(1)[0][0]
+    grew = True
+    while grew:
+        grew = False
+        for bank, touching in adj.items():
+            if bank in rules.water_open or bank in homes:
+                continue
+            votes = Counter()
+            for other, n in touching.items():
+                if other in homes:
+                    votes[homes[other]] += n
+            if votes:
+                homes[bank], grew = votes.most_common(1)[0][0], True
+    banks = {bank for bank, home in homes.items() if home == main}
+    allowed = frozenset({main} | banks)
+    shore = set()
+    for mt in allowed:
+        shore |= rules.ring_adj[kind].get(mt, set())
+    return main, allowed, frozenset(shore)
+
+
+
+def widen_cell(choices, active, limits, p, reason):
+    """Widen one cell's context a single step (the usual ladder) and refresh its working domain, keeping
+    any family restriction it carries. Returns the INFO row, or None when the cell cannot widen."""
+    if choices is None or choices.levels.get(p, len(CONTEXT_LEVELS) - 1) >= len(CONTEXT_LEVELS) - 1:
+        return None
+    row = choices.widen(p, reason)
+    fresh = list(choices[p])
+    keep = [mt for mt in fresh if p not in (limits or {}) or mt in limits[p]]
+    active[p] = keep or fresh
+    return row
+
+
+def restrict_water(rules, rows, grid, active, choices=None, limits=None):
+    """One water family per connected water region. Candidates of its water cells are cut to the family's
+    open water plus the banks vanilla puts next to that open water; the shore ring (the cells next to the
+    region) to the tiles vanilla puts next to those. A cell whose domain would empty keeps it (INFO)."""
+    if not hasattr(rules, 'water_family'):
+        return ['INFO BLOCKOUT water families skipped: rules carry no water data'], {}
+    notes, families = [], {}
+    for number, (body, kind) in enumerate(water_bodies(rows, grid.w, grid.h), 1):
+        fam = family_of(rules, kind) if hasattr(rules, 'water_kind') else rules.water_family(kind)
+        if fam is None:
+            notes.append(f'INFO BLOCKOUT water region:{number} size:{len(body)} kind:{kind} no vanilla family; unrestricted')
+            continue
+        opened, allowed, shore = fam
+        ring = {q for x, y in body for q in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))
+                if q in active and q not in body and rows[q[1]][q[0]] != '~'}
+        cut = kept = widened = 0
+        for cells, tiles in ((body, allowed), (ring, shore)):
+            for p in sorted(cells, key=lambda q: (q[1], q[0])):
+                if p not in active:
+                    continue
+                new = [mt for mt in active[p] if mt in tiles]
+                # No family tile fits this cell's context: widen the context one step at a time (the same
+                # ladder as everywhere else, printed per cell) rather than let another family in.
+                while not new and choices is not None and choices.levels.get(p, 3) < len(CONTEXT_LEVELS) - 1:
+                    notes.append(choices.widen(p, f'water region:{number} family 0x{opened:03X}'))
+                    new = [mt for mt in choices[p] if mt in tiles]
+                    widened += bool(new)
+                if new:
+                    cut += len(active[p]) - len(new)
+                    active[p] = new
+                    if limits is not None:
+                        limits[p] = frozenset(tiles) if p not in limits else limits[p] & frozenset(tiles)
+                else:
+                    kept += 1
+        families[number] = (body, kind, opened, allowed)
+        notes.append(f'INFO BLOCKOUT water region:{number} size:{len(body)} kind:{kind} family:0x{opened:03X}+'
+                     f'{len(allowed) - 1}banks '
+                     f'candidates-cut:{cut} ring:{len(ring)} widened-cells:{widened} unrestricted-cells:{kept}')
+        if kept:
+            notes.append(f'INFO BLOCKOUT water region:{number} {kept} cells kept an unrestricted domain '
+                         '(no family tile fits their context)')
+    return notes, families
+
+
+def water_report(rules, grid, families):
+    """Count the open-water families each region really uses, from the final tiles."""
+    notes, bad = [], 0
+    for number, (body, kind, opened, allowed) in sorted(families.items()):
+        used = Counter(grid.at(*p)[0] for p in body)
+        open_used = {mt for mt in used if mt in rules.water_open}
+        outside = sorted(mt for mt in used if mt not in allowed)
+        if open_used != {opened} or outside:
+            bad += 1
+        tiles = ' '.join(f'0x{m:03X}:{n}' for m, n in used.most_common())
+        notes.append(f'INFO BLOCKOUT water region:{number} size:{len(body)} kind:{kind} '
+                     f'families-used:{len(open_used)} '
+                     f'outside-family:{",".join(f"0x{m:03X}" for m in outside) or "none"} tiles:{tiles}')
+    return notes, bad
+
+
+def tree_covers(component, templates, limit=24):
+    """Exact covers of a small T region by whole vanilla trees (rectangles of wall tiles seen alone in
+    vanilla lawn, at least 2x2: a one-cell-wide rectangle is a post or a rock), most frequent first.
+    Each cover is {cell: tuple}."""
+    cells, found = set(component), []
+    ranked = [tpl for tpl, _ in templates.most_common() if len(tpl) >= 2 and len(tpl[0]) >= 2]
+
+    def place(done, cover):
+        if len(found) >= limit:
+            return
+        rest = sorted(cells - done, key=lambda p: (p[1], p[0]))
+        if not rest:
+            found.append(dict(cover))
+            return
+        x, y = rest[0]
+        for tpl in ranked:
+            h, w = len(tpl), len(tpl[0])
+            spots = {(x + dx, y + dy) for dy in range(h) for dx in range(w)}
+            if spots <= cells and not spots & done:
+                grown = dict(cover)
+                grown.update({(x + dx, y + dy): tpl[dy][dx] for dy in range(h) for dx in range(w)})
+                place(done | spots, grown)
+    place(set(), {})
+    return found
+
+
+def small_tree_region(repo, grid, pair, rows, rules, forced, cell_bits, component, region, number, total,
+                      left_as_lawn, domains=None, active=None, limits=None):
+    """A T region of SMALL_TREE cells or fewer is filled with whole vanilla trees only. No whole tree
+    fits -> lawn, never a fence post or stump (those are walkable tiles blocked by collision, or rock)."""
+    ring = region - component
+    original = {p: grid.at(*p) for p in region}
+    glue = objects.Glue(repo, grid, pair)
+    around = region | {q for x, y in region for q in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))}
+
+    def clean():
+        return not any(glue.broken_side(x, y, side) is not None
+                       for x, y in around if grid.inside(x, y) for side in objects.SIDES)
+
+    def restore():
+        for p, cell in original.items():
+            grid.set(*p, cell)
+    tag = f'region:{number}/{total} symbol:T size:{len(component)}'
+    steps, tried, why, notes = 0, 0, 'no template covers the region', []
+    for cover in tree_covers(component, getattr(rules, 'tree_templates', Counter())):
+        tried += 1
+        for p, cell in cover.items():
+            grid.set(*p, cell)
+        while True:
+            hard = hard_solve(repo, grid, pair, rows, rules, forced, cell_bits, ring, letters=True)
+            steps += hard['steps']
+            why = hard['reason'] or 'ring solved but an object side stays broken'
+            # A ring cell whose context has no tile for this tree (a cap under tall grass, say) widens one
+            # step along the usual ladder, printed per cell, before the next template is tried.
+            stuck = [p for p in hard.get('conflict', ()) if p in ring and domains is not None
+                     and domains.levels.get(p, 3) < len(CONTEXT_LEVELS) - 1]
+            if hard['ok'] or not stuck:
+                break
+            for p in stuck:
+                notes.append(widen_cell(domains, active if active is not None else {}, limits, p,
+                                        f'whole-tree ring of group {min(component)[0]},{min(component)[1]}'))
+                forced[p] = [mt for mt in domains[p] if rules.material(cell_bits[p][mt]) == rows[p[1]][p[0]]]
+        if hard['ok']:
+            apply_candidates(grid, hard['assignment'], forced, cell_bits)
+            if clean():
+                tiles = ' '.join(f'0x{c[0]:03X}' for _, c in sorted(cover.items(), key=lambda i: (i[0][1], i[0][0])))
+                return notes + [f'INFO BLOCKOUT objects whole-tree {tag} template:{tiles} ring:{len(ring)} '
+                                f'steps:{steps} OBJECT:hard']
+        restore()
+    # No whole tree fits: leave lawn (the letter stays T in the file; the export reports the cells as lawn).
+    by_mt = {}
+    for cell in rules.letters.get('.', Counter()):
+        if not cell[1]:
+            by_mt.setdefault(cell[0], cell)
+    lawn = sorted(by_mt, key=lambda mt: (-rules.freq.get(mt, 0), mt))[:12]
+    lawn_rows = Rows(''.join('.' if (x, y) in component else rows[y][x] for x in range(grid.w))
+                     for y in range(grid.h))
+    domains, bits = dict(forced), dict(cell_bits)
+    for p in component:
+        domains[p], bits[p] = list(lawn), dict(by_mt)
+    hard = hard_solve(repo, grid, pair, lawn_rows, rules, domains, bits, component | ring, letters=True)
+    x, y = min(component)
+    if hard['ok']:
+        apply_candidates(grid, hard['assignment'], domains, bits)
+        left_as_lawn.update(component)
+        return notes + [f'INFO BLOCKOUT tree group {x},{y} left as lawn (no whole tree fits)',
+                        f'INFO BLOCKOUT tree group {x},{y} whole-tree covers tried:{tried} steps:{steps} last reason:{why}']
+    restore()
+    return notes + [f'INFO BLOCKOUT tree group {x},{y} kept its previous assignment: no whole tree and no lawn fits']
+
+
+def object_regions(repo, grid, pair, rows, rules, choices, cell_bits, exclude=(), symbols=OBJECT_LETTERS,
+                   left_as_lawn=None, domains=None, limits=None):
     """Atomic connected objects, with pinned interiors and a joint boundary band."""
+    left_as_lawn = set() if left_as_lawn is None else left_as_lawn
     all_objects = {p for p in choices if rows[p[1]][p[0]] in OBJECT_LETTERS}
     regions = [(symbol, component) for symbol in sorted(symbols)
                for component in connected_regions({p for p in all_objects if rows[p[1]][p[0]] == symbol})]
@@ -944,6 +1226,17 @@ def object_regions(repo, grid, pair, rows, rules, choices, cell_bits, exclude=()
                               and rows[q[1]][q[0]] not in LEDGE_STEP}
         forced = {p: [mt for mt in choices[p] if rules.material(cell_bits[p][mt]) == rows[p[1]][p[0]]]
                   for p in region}
+        if symbol == 'T' and len(component) <= SMALL_TREE and hasattr(rules, 'tree_templates'):
+            # Whole vanilla trees only; the seen-pair fallback used to fill such a group with any wall tile
+            # that fit: fence posts and stumps in the middle of a lawn.
+            if any(not forced[p] for p in region - component):
+                notes.append(f'INFO BLOCKOUT {label} region:{number} symbol:T size:{len(component)} '
+                             'no letter-fixed domain around the tree; previous assignment retained')
+                continue
+            notes.extend(small_tree_region(repo, grid, pair, rows, rules, forced, cell_bits, component,
+                                           region, number, len(regions), left_as_lawn, domains, choices,
+                                           limits))
+            continue
         if any(not v for v in forced.values()):
             notes.append(f'INFO BLOCKOUT {label} region:{number} symbol:{symbol} size:{len(component)} '
                          'no letter-fixed domain; previous assignment retained')
@@ -1050,7 +1343,7 @@ SECTION_MIN = 8       # a failing window is split down to this size
 
 
 def sectioned_solve(repo, grid, pair, rows, rules, domains, active, cell_bits, cells, preferred,
-                    letters, label):
+                    letters, label, choices=None, limits=None):
     """Solve `cells` window by window (top to bottom, left to right). Each window sees cells already
     solved as fixed and cells not yet reached as free; a failing window is split into quarters down to
     SECTION_MIN. Solved windows are applied at once. Returns (solved cells, notes)."""
@@ -1082,15 +1375,31 @@ def sectioned_solve(repo, grid, pair, rows, rules, domains, active, cell_bits, c
             return True
         free = frozenset(cells - region - solved)
         want = {p: grid.at(*p)[0] if p in solved else preferred.get(p) for p in region}
-        result = hard_solve(repo, grid, pair, rows, rules, domains, cell_bits, region,
-                            preferred={p: v for p, v in want.items() if v is not None}, letters=letters,
-                            step_limit=20000, time_limit=4., free=free)
+        while True:
+            result = hard_solve(repo, grid, pair, rows, rules, domains, cell_bits, region,
+                                preferred={p: v for p, v in want.items() if v is not None}, letters=letters,
+                                step_limit=20000, time_limit=4., free=free)
+            if result['ok']:
+                break
+            # A cell whose context offers nothing that satisfies the hard rules (a map-edge sand cell with
+            # only plain sand above open water) widens one step per round, printed, before the window splits.
+            rows_ = [widen_cell(choices, active, limits, p, f'{label} window {ax},{ay}: {result["reason"]}')
+                     for p in result.get('conflict', ()) if p in region]
+            rows_ = [r for r in rows_ if r]
+            if not rows_:
+                break
+            notes.extend(rows_)
+            if domains is not active:
+                for p in result['conflict']:
+                    if p in active and p in domains and len(domains[p]) != 1:
+                        domains[p] = active[p]
         if result['ok']:
             apply_candidates(grid, result['assignment'], active, cell_bits)
             solved.update(region)
             return True
         if size <= SECTION_MIN:
-            failed.append((ax, ay, bx, by, result['reason']))
+            failed.append((ax, ay, bx, by, result['reason'] + (' at ' + ' '.join(f'{x},{y}' for x, y in result['conflict'][:4])
+                                                               if result.get('conflict') else '')))
             return False
         half = max(SECTION_MIN, size // 2)
         ok = True
@@ -1150,7 +1459,10 @@ def tile(repo, grid, pair, rows, exclude=()):
     out.extend(resolve_contexts(repo, grid, pair, rows, choices, cell_bits))
     valid_context = all(choices.values())
     active = {p: values for p, values in choices.items() if values}
+    left_as_lawn, water_families, limits = set(), {}, {}
     if active:
+        notes, water_families = restrict_water(rules, rows, grid, active, choices, limits)
+        out.extend(notes)
         # Only b cells are initially fixed. Every other cell, including lawn and
         # cells under events, receives a legal context seed and participates.
         seed = {p: grid.at(*p)[0] if grid.at(*p)[0] in values else values[0]
@@ -1173,11 +1485,12 @@ def tile(repo, grid, pair, rows, exclude=()):
             out.append(f'INFO BLOCKOUT hard coherent seed refused:{coherent["reason"]} '
                        'no invalid assignment applied; solving in sections')
             _, notes = sectioned_solve(repo, grid, pair, rows, rules, seed_domains, active, cell_bits,
-                                       set(active), seed, False, 'coherent seed')
+                                       set(active), seed, False, 'coherent seed', choices, limits)
             out.extend(notes)
         out.append(f'INFO BLOCKOUT solve editable:{len(active)} '
                    f'frozen-b:{grid.w * grid.h - len(choices)} (no modal-lawn or event freeze)')
-        out.extend(object_regions(repo, grid, pair, rows, rules, active, cell_bits, exclude))
+        out.extend(object_regions(repo, grid, pair, rows, rules, active, cell_bits, exclude,
+                                  left_as_lawn=left_as_lawn, domains=choices, limits=limits))
         out.extend(ledge_rows(repo, grid, pair, rows, rules, active, cell_bits))
         rest = {p: rows[p[1]][p[0]] for p in active
                 if rows[p[1]][p[0]] not in OBJECT_LETTERS and rows[p[1]][p[0]] not in LEDGE_STEP}
@@ -1193,7 +1506,7 @@ def tile(repo, grid, pair, rows, exclude=()):
             else:
                 out.append(f'INFO BLOCKOUT rest refused:{hard["reason"]}; solving the rest in sections')
                 _, notes = sectioned_solve(repo, grid, pair, rows, rules, active, active, cell_bits,
-                                           set(rest), picked, True, 'rest')
+                                           set(rest), picked, True, 'rest', choices, limits)
                 out.extend(notes)
         else:
             out.append('INFO BLOCKOUT rest skipped: no non-tree editable cells')
@@ -1219,6 +1532,21 @@ def tile(repo, grid, pair, rows, exclude=()):
     actual = export(repo, grid, pair)
     matched = sum(a == b for row, other in zip(rows, actual) for a, b in zip(row, other))
     fidelity = matched / (grid.w * grid.h)
+    # Object letters must survive: every T, r and n cell exports as itself again (a small tree group left
+    # as lawn on purpose is the one reported exception).
+    wanted = Counter(rows[y][x] for y in range(grid.h) for x in range(grid.w) if rows[y][x] in OBJECT_LETTERS)
+    lost = [(x, y, rows[y][x], actual[y][x]) for y in range(grid.h) for x in range(grid.w)
+            if rows[y][x] in OBJECT_LETTERS and actual[y][x] != rows[y][x] and (x, y) not in left_as_lawn]
+    lawned = Counter(rows[y][x] for x, y in left_as_lawn)
+    lost_by = Counter(char for _, _, char, _ in lost)
+    out.append('INFO BLOCKOUT object letters ' + ' '.join(
+        f'{char}:{wanted[char] - lost_by[char] - lawned[char]}/{wanted[char]}' for char in sorted(wanted)) +
+        f' survived; left as lawn:{len(left_as_lawn)}')
+    out.extend(f'WARN BLOCKOUT object letter lost {x},{y} {a}->{b}' for x, y, a, b in lost[:8])
+    water_notes, water_bad = water_report(rules, grid, water_families)
+    out.extend(water_notes)
+    if water_bad:
+        out.append(f'WARN BLOCKOUT water regions with more than one family or tiles outside it:{water_bad}')
     added = sorted(set(objects.check(repo, grid, pair)) - set(objects.check(repo, before, pair)))
     losses = reach_losses(before, grid, pair)
     # Open bank = a water cell next to lawn with a tile pair vanilla never uses there. Pond rims are
@@ -1242,7 +1570,8 @@ def tile(repo, grid, pair, rows, exclude=()):
     if open_bank:
         out.append(f'WARN BLOCKOUT bank open-water/lawn:{len(open_bank)} first:{open_bank[0]}')
     out.append(f'INFO BLOCKOUT fidelity {matched}/{grid.w * grid.h} = {fidelity:.2%}')
-    safe = valid_context and not added and not losses and not open_bank and fidelity >= .95
+    safe = (valid_context and not added and not losses and not open_bank and fidelity >= .95
+            and not lost and not water_bad)
     return dict(safe=safe, fidelity=fidelity, added=len(added), losses=losses,
                 open_bank=len(open_bank), rows=out)
 
