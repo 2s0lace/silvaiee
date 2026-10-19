@@ -1579,3 +1579,78 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
 - An earlier calibration save was rejected by the journal because another process
   changed PkV3DS10171_Frlg/map.bin during its read; results were discarded and the
   command retried successfully against refreshed sources. No conflict was bypassed.
+
+
+## Chunk layouts: owner removes score gate; exact-overlap generation (2026-10-19)
+- Owner decision supersedes the prior Part B STOP and its agent-added confidence
+  gate. Chunk/seam scores cannot rank quality: schematic/empty layouts outscore
+  vanilla because lawn and open sea are common chunks. Part B is a REPORT of
+  odd/rare chunks with nearest vanilla sources, never a generation or D/E gate.
+  The former D requirement to exceed score medians is consequently diagnostic.
+  Keep the historical calibration honestly; do not rename its weak separation a
+  quality success. `layout calibrate` no longer returns a quality PASS/FAIL.
+- Part C uses exact observed 4x4 letter/elevation variants on a full stride-two
+  lattice, including the actual cross-phase vanilla observations missing from
+  the two diagnostic grids. This leaves the diagnostic vocabulary unchanged.
+  Shared cells agree exactly; no kind-pair or equal-edge fallback. Source maps,
+  boxes and elevations remain traceable. Vanilla-only and layout-level holdout
+  apply to generation vocabulary and metatile layout calibration alike.
+- Hard exit connectivity, compatible heights, one water body/no singletons and
+  no b are constraints inside backtracking. Fixed --keep letters/heights cannot
+  be carved or replaced. Anti-blandness uses the existing layout.py stratum p95
+  thresholds: every screen plain share and class mirror must stay within them.
+  Partial bounds prune impossible branches; complete leaves are checked before
+  acceptance. The letter adapter is an explicit pre-tiling approximation; actual
+  metatile layout lint must still pass after tiling. No threshold was relaxed.
+- Owner requested C first and its report before D/E, then safe tiling, SHAPE <=6,
+  no open/mirror INFO LAYOUT rows, learned path masks and the seed comparison.
+  Existing stop-on-miss remains in force for these acceptance targets.
+
+- C checkpoint, before D/E: `python tools/pk/pk.py layout generate PkBlockCoast_Frlg --type route --exits N --seed 1 --out .pk/chunks/c_seed1.blockout`
+  succeeds: 7603 exact variants, 99 overlapping placements, 95 steps/25 backtracks;
+  zero SHAPE rows. Open 26.6667% <= route p95 26.6667%, mirror 66.3551% <= p95
+  71.1864%, from 53 vanilla route maps. Exact letter/elevation agreement, no b,
+  connected exits and water constraints hold. `python tools/pk/tests/test_chunks.py`
+  passed 18 tests at that checkpoint. C was reported to the owner before D/E.
+- E implementation: Prim MST plus existing paths._astar before chunk fill;
+  its width median and straight p95 are reused, with fixed width footprints and
+  keep conflicts rejected. A full stride-two chunk solve then respects these p cells.
+- `python tools/pk/pk.py layout learn`: learned mask counts p/*=47, s/.=28,
+  ~/.=27, ~/s=39, saved in `.pk/chunks/autotile.json` by native tileset pair.
+  Diagonals are normalized only behind both matching cardinal neighbours (47 blob
+  configurations); diagonal-only paths are explicitly impossible. Mask candidate
+  tables retain same-pair tuples or compatible primary portability, with layout
+  holdout, never secondary IDs from another pair. Context/mask intersection is
+  preferred; mask-only override is named INFO. Missing masks refuse tiling.
+  Final mask and new path SEAM guards remain hard. No target loosened.
+
+- D/E acceptance STOP: `python tools/pk/tests/test_chunks.py --briefs` generates
+  PkLayoutCodexCoast_Frlg with --exits N, --seed 1, coast.keep, --via 10,10.
+  It passes SHAPE 0 <=6 and check-paths missing 0 (88 p cells). The fixed network
+  has 28 cells, width 2, one MST edge, straight p95 8. The generated open share is
+  25.3333% <=26.6667%; mirror 31.9444% <=71.1864%. Sampling uses 7603 exact variants,
+  99 overlap placements, 77 choices/19 backtracks, with owner keep cells unchanged.
+- The same command's first tiling proposal is UNSAFE: 480/480=100% letters,
+  0 new OBJECT, 0 final mask violations, but 67 new SEAM identities touch p cells.
+  One sea family is used; no open-bank warning is emitted. The full coherent seed
+  contradicts, sectioned seed solves 288/480 cells, rest solves 284/462; local
+  exact-mask choices still fail global metatile compatibility. Refusal is correct;
+  no unsafe tile grid was installed. Audit: `.pk/chunks/layout_1_tile.log`.
+- STOP at this first acceptance miss. No threshold/mask/overlap was relaxed in
+  response. Forest/Sevii generation+tiling, actual metatile layout lint, post-tiling
+  exit checks, the five rebuild acceptances, coast retiling, path renders and the
+  three-seed comparison are skipped/unvalidated, not claimed as successes.
+  Fresh blank draft registrations for the three own PkLayoutCodex maps exist in
+  the game workspace, but no proposed tile grid was saved. No other Pk map,
+  vanilla map, ROM build, blueprint apply or push was performed.
+- Before this acceptance, an attempted optional --via 12,12 pressed a path end
+  into unsupported fixed shoreline contexts. It produced no blockout. Routing
+  was given bounded plan backtracking and the author's optional waypoint moved
+  inland; the keep mask itself was not changed. This was generation setup, not
+  a relaxation of any acceptance target. A transient journal-lock conflict during
+  draft creation was retried without bypassing locking.
+- `python tools/pk/tests/test_chunks.py`: 23 tests PASS, including exact overlap,
+  elevations, holdout, padding/keep, hard connectivity, anti-blandness/backtracking,
+  all 47 blob configurations, mask-only override, synthetic T/cross/dead-end tiles,
+  impossible diagonal warnings, and deterministic connected MST routing.
+- Final scoped checks: `python release/silvaiee/tools/pk/tests/test_chunks.py`: 23 tests PASS; `python -m unittest discover -s tools/pk/tests -p test_core.py`: 32 tests PASS. Broader rebuild acceptance was not continued after the D refusal.

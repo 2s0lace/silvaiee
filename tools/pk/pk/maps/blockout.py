@@ -590,6 +590,20 @@ class ContextDomains(dict):
                     if cell[0] not in own:
                         extra.add(cell[0])
         self.extra[p] = extra
+        masks = getattr(self.rules, 'mask_domains', {})
+        if p in masks:
+            by_mask = masks[p]
+            overlap = set(by_mt) & {cell[0] for cell in by_mask}
+            if overlap:
+                by_mt = {mt: by_mt[mt] for mt in overlap}
+            else:
+                by_mt = {}
+                for cell, n in by_mask.items():
+                    take(cell, n)
+                note = (f'INFO BLOCKOUT exact-mask override {p[0]},{p[1]} candidates:{len(by_mt)} '
+                        'context intersection empty; exact vanilla mask only')
+                if by_mask and note not in self.history:
+                    self.history.append(note)
         self[p] = sorted(by_mt, key=lambda mt: (-sum(by_mt[mt].values()), mt))
         def pick(mt):
             # The tuple of a tile that fits this cell's letter (a tile is often walked on and blocked
@@ -949,6 +963,11 @@ def _hard_solve(repo, grid, pair, rows, rules, choices, cell_bits, region=None,
         open water against lawn is never a bank. Hard, like the object rules. Water touching sand must
         be open water (the sea shore is drawn in the sand tile); a pond rim never sits on a beach."""
         lp, lq = rows[p[1]][p[0]], rows[q[1]][q[0]]
+        if hasattr(rules, 'mask_domains') and 'p' in (lp, lq):
+            table = bank_h if side in ('E', 'W') else bank_v
+            contact = (a, b) if side in ('E', 'S') else (b, a)
+            if contact not in table:
+                return False
         if not ((lp == '~' and lq in WALK) or (lq == '~' and lp in WALK)):
             return True
         if open_water is not None and ((lp == '~' and lq == 's' and a not in open_water) or
@@ -1734,10 +1753,17 @@ def _tile(repo, grid, pair, rows, exclude=(), baseline=None):
                           'INFO OBJECT new:0', 'INFO reach unchanged',
                           f'INFO BLOCKOUT fidelity {grid.w * grid.h}/{grid.w * grid.h} = 100.00%',
                           'INFO BLOCKOUT tiling/joins skipped: no changed letters'])
-    rules = learned(repo, pair, exclude)
+    rules = copy(learned(repo, pair, exclude))
+    from .chunks import mask_domains, path_seams
+    masks, mask_notes, _ = mask_domains(repo, grid, pair, rows, exclude)
+    rules.mask_domains = masks
+    if any(not values for values in masks.values()):
+        return dict(safe=False, fidelity=0., added=0, losses={}, open_bank=0,
+                    rows=mask_notes + ['INFO BLOCKOUT refused: missing exact mask; no map cells invented or changed'])
     out = [f'INFO BLOCKOUT context references maps:{len(rules.sources)} portable-cells:{rules.portable_cells} '
            f'incompatible-class-cells:{rules.class_mismatches} exclude:{",".join(exclude) or "none"}',
            'INFO BLOCKOUT shape/path material brushes replaced by context-restricted full-map solve']
+    out.extend(mask_notes)
     linked = objects.connected_sides(grid.data)
     out.append(f'INFO BLOCKOUT context connected-sides:{",".join(sorted(linked)) or "none"} outside:wildcard')
     choices, cell_bits, notes = context_candidates(rows, rules, linked)
@@ -1874,8 +1900,14 @@ def _tile(repo, grid, pair, rows, exclude=(), baseline=None):
     if open_bank:
         out.append(f'WARN BLOCKOUT bank open-water/lawn:{len(open_bank)} first:{open_bank[0]}')
     out.append(f'INFO BLOCKOUT fidelity {matched}/{grid.w * grid.h} = {fidelity:.2%}')
+    mask_bad = [p for p, values in masks.items() if grid.at(*p)[0] not in {cell[0] for cell in values}]
+    out.extend(f'WARN BLOCKOUT exact mask violated {x},{y}' for x, y in mask_bad)
+    out.append(f'INFO BLOCKOUT exact-mask final violations:{len(mask_bad)}')
+    new_path_seams = sorted(path_seams(grid, rows, rules) - path_seams(before, rows, rules))
+    out.append(f'INFO BLOCKOUT new SEAM at path cells:{len(new_path_seams)}')
+    out.extend(f'WARN BLOCKOUT path SEAM {entry}' for entry in new_path_seams)
     safe = (valid_context and not added and not losses and not open_bank and fidelity >= .95
-            and not lost and not water_bad and not misplaced)
+            and not lost and not water_bad and not misplaced and not mask_bad and not new_path_seams)
     return dict(safe=safe, fidelity=fidelity, added=len(added), losses=losses,
                 open_bank=len(open_bank), rows=out)
 
@@ -1901,8 +1933,8 @@ def command(repo, tx, args, opts):
     notes = check(repo, grid, pair, rows)
     if opts.get('check'):
         return Result(f'blockout check {grid.name}', notes)
-    if not grid.name.startswith('PkBlock') or not grid.name.endswith('_Frlg'):
-        raise PkError('PARSE', 'experimental tiling writes only your PkBlock*_Frlg drafts; vanilla is read-only')
+    if not grid.name.startswith(('PkBlock', 'PkLayout')) or not grid.name.endswith('_Frlg'):
+        raise PkError('PARSE', 'experimental tiling writes only your PkBlock*/PkLayout*_Frlg drafts; vanilla is read-only')
     report = tile(repo, grid, pair, rows)
     if not report['safe']:
         return Result(f'blockout {grid.name} refused; no map writes', notes + report['rows'], False, 'PARSE')

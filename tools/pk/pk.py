@@ -135,7 +135,7 @@ def dispatch(repo, tx, argv):
         else:
             raise PkError('PARSE', 'usage: pk map ls|info|show|at|lint|paint|fill|line|grid|copy|border|paintover|resize|extend-to|new')
     elif noun == 'layout':
-        args, opts = options(tail)
+        args, opts = options(tail, values=('type', 'exits', 'seed', 'out', 'keep', 'via', 'map'))
         from pk.maps import chunks
         result = chunks.command(repo, tx, args, opts)
     elif noun == 'meta':
