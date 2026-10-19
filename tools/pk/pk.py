@@ -134,6 +134,10 @@ def dispatch(repo, tx, argv):
             result = map_edit.command(repo, tx, args, opts)
         else:
             raise PkError('PARSE', 'usage: pk map ls|info|show|at|lint|paint|fill|line|grid|copy|border|paintover|resize|extend-to|new')
+    elif noun == 'layout':
+        args, opts = options(tail)
+        from pk.maps import chunks
+        result = chunks.command(repo, tx, args, opts)
     elif noun == 'meta':
         args, opts = options(tail, values=('offset', 'limit', 'tags', 'sym', 'png', 'role', 'class'),
                              flags=('unnamed', 'overwrite', 'sheet'))

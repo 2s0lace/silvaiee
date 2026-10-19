@@ -1544,3 +1544,38 @@ All in `pk/maps/lint.py`, each with a synthetic-grid unit test in `tests/test_ma
   so unsafe: a gate corner where no open or required rock tile satisfies the ledge row beside it, and even offering every rock tile
   the region stays contradictory. `--benchmark` therefore stops at Route 22 (as the target rule demands); the other three
   rebuilds were run with the same `tile()` call outside the harness (`diag`), identical to the harness's checks.
+
+
+## Chunk layouts: vocabulary/scoring; STOP at weak calibration separation (2026-10-19, Codex)
+- Implemented Parts A/B in `pk/maps/chunks.py`, wired `pk layout learn|score|calibrate`,
+  documented in `help/layout.md`. AGENT stays at 39 lines and equals `pk help`.
+- `python tools/pk/pk.py layout learn`: 72 vanilla outdoor maps, 13507 complete 4x4
+  observations on grids offset (0,0)/(2,2), 6087 exact chunks, 3260 representative
+  kinds, 27870 directed adjacency keys. Frequency-first merging stays within two
+  cells of the representative, without transitive chains. Source boxes/elevations,
+  borders and counts are saved in git-ignored `.pk/chunks/vocabulary.json`.
+- `python tools/pk/pk.py layout calibrate`: rebuilds vocabulary/adjacency after
+  holding out each tested map's whole layout (aliases included). Vanilla chunk-fit
+  p5/p50: 55.0385%/76.2911%; seam-fit p5/p50: 40.0000%/55.9596%. Coast chunk/seam:
+  78.0000%/53.7500%. All 26 current PkV3 maps exported/scored read-only; complete
+  scores and worst source boxes: `.pk/chunks/calibration.json`.
+- Part B FAIL: the median seam margin is just 2.2096 percentage points. An initial
+  positive-gap-only gate was too weak for "clearly higher" and was corrected,
+  without changing chunk/seam scoring or inventing a fixed required margin.
+  The same calibration command now reports a distribution-free 95% order-statistic
+  interval for the vanilla median, 53.1818%..60.5263%; the coast lies inside it.
+  A PASS requires the interval's lower bound to exceed the coast; insufficient
+  data also stop. This confidence-based interpretation is explicit, not a target
+  relaxation. The final command exits with the Part B STOP and saves the report.
+- Weakness: small local chunks and equal-edge fallback do not reliably distinguish
+  the coast from typical vanilla; merging and nearest-kind substitution discard
+  detail. Some schematic v3 layouts score above the vanilla median. No tuning
+  after the miss, generation, --keep, fresh maps, tiling, seed comparison or renders.
+- `python tools/pk/pk.py map blockout PkBlockCoast_Frlg .pk/blockout/coast.txt --check`:
+  57 current SHAPE warnings (8 listed +49), rather than the task's historical 61.
+  End-to-end targets were not attempted or relaxed. No game-map writes/build/apply/push.
+- `python tools/pk/tests/test_chunks.py`: 11 tests PASS.
+  `python -m unittest discover -s tools/pk/tests -p test_core.py`: 32 tests PASS.
+- An earlier calibration save was rejected by the journal because another process
+  changed PkV3DS10171_Frlg/map.bin during its read; results were discarded and the
+  command retried successfully against refreshed sources. No conflict was bypassed.

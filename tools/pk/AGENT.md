@@ -23,7 +23,7 @@ pk terrain brush MAP rect|circle|path ... MATERIAL (water, grass, sand, ground, 
 pk terrain river MAP x,y x,y [width=2] | ledge | forest --stamp tree | bake | learn | show | auto MAP x,y,WxH [--options N|--pick N]
 pk stamp extract MAP x,y,WxH name | from-tileset SET.pkt OBJ.px name | mine PAIR [--min-count 3] [--apply] | ls
 pk stamp place MAP name x,y
-pk kit index | find [--feature F --top C --bottom C --left C --right C --size WxH --pair P --sheet] | fit MAP x,y,WxH (help kit)
+pk kit index | find [--feature F --top C --bottom C --left C --right C --size WxH --pair P --sheet] | fit MAP x,y,WxH (help kit); pk layout learn|score MAP FILE|calibrate (help layout)
 pk shape find --kind pond|cove|sandbar|beach|island|grove|tallgrass [--size WxH --sheet] | place MAP KIND_OR_ID x,y (help shape)
 pk bp check|plan|render|apply MAP | pk bp world | pk bp export MAP (help bp: blueprint format)
 pk tileset build art/X/tileset.pkt | pk tileset export MAP name | pk px show|check|render FILE.px
