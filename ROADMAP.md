@@ -3,13 +3,23 @@
 **Goal:** an AI agent rebuilds a whole region so it looks like Game Freak made it, only a little richer:
 mountains, highlands, living animated towns and new art, all through `pk`.
 
-**Lesson from the [benchmark](tools/pk/bench/results.md):** models are good at ideas and dialogue, and bad at
-spatial detail and at judging their own maps. So the plan:
-- **the LLM decides what goes where;**
-- **algorithms perfect how it looks;**
-- **cheap, measurable critics replace expensive vision judges.**
+**What we learned so far** (details in [DECISIONS.md](tools/pk/DECISIONS.md) and the
+[benchmark](tools/pk/bench/results.md)):
+- **Models are good at ideas and dialogue, and bad at spatial detail.** They cut trees in half, miss edges
+  and can't judge their own maps.
+- **Fixing a bad map afterwards doesn't work.** Three rounds of automatic "polish" passed every number and
+  looked worse every time.
+- **What works:** build from real vanilla shapes, let the tools place the tiles, and make the correct way
+  the easy way.
+- **Local plausibility is not composition.** A map made of vanilla-looking 4x4 pieces can still be nonsense
+  as a whole, so layout needs its own level.
 
-Every round has measurable targets, and a round is done only when its numbers pass.
+The plan:
+- **the model (or a human art director) decides the composition;**
+- **algorithms learned from vanilla do the tiles, edges and objects;**
+- **cheap, measurable checks replace expensive vision judges.**
+
+Every item has measurable targets, and an item is done only when its numbers pass.
 
 **Art direction:** tastefully richer than vanilla, never far beyond it.
 - Shade count, detail and colour may go a little above vanilla, up to the richest vanilla examples.
@@ -18,65 +28,116 @@ Every round has measurable targets, and a round is done only when its numbers pa
 
 ---
 
-## Round 1: reliable foundations (in progress)
-- [ ] **Clean baseline:** the test suite is green, and the known-failing tests are explained.
-- [ ] **Full-map export/import** as text. Target: byte-identical round trip on 100% of vanilla FRLG outdoor
-      layouts.
-- [ ] **Diagonal-aware terrain solver:** learn NE/NW/SE/SW neighbour tables. Target: +4 percentage points exact
-      over baseline on the erase-and-resolve test, and no more seams.
-- [ ] **Stamp mining:** detect houses, trees and fences in vanilla, and show them as objects in `map show`.
-      Target: at least 80% of building and tree cells covered on Pallet, Viridian and Route 1.
-- [ ] **Metatile catalog:** names and tags for the tiles that make up 95% of outdoor usage.
-- [ ] **Working `map lint`:** calibrated on vanilla maps vs deliberately ugly ones. Target: every ugly map scores
-      worse than every vanilla map, and the benchmark maps rank like the human scores.
+## Done ✅
+- **Full-map export/import as text:** byte-identical round trip on 319/319 vanilla FRLG layouts.
+- **`map lint`, calibrated on vanilla:**
+  - every vanilla outdoor map scores 0;
+  - every deliberately ugly test map scores above vanilla;
+  - every badly rated benchmark map scores worse than the best one.
 
-## Round 2: self-perfecting maps and assets
-- [ ] **Seam repair:** after every `map copy` or stamp, re-solve a 1–2 tile ring around the pasted area.
-- [ ] **Patch critic:** score a map by how many of its 3x3 tile patterns appear in vanilla, plus shape
-      statistics (straight runs, curvature, flat areas) pooled from all of Kanto.
-- [ ] **Polish loop:** the LLM's sketch stays frozen. Shape polish (±1 tile boundary moves) and tile polish run
-      on the CPU, and a change is kept only if the critic improves. Zero tokens.
-      Target: benchmark maps scored below 3 reach at least 4, and vanilla maps stay unchanged.
-- [ ] **Sockets:** each new object declares the ground it stands on, so it inherits vanilla statistics.
-- [ ] **Asset style critic plus auto-cleanup:** palette snap, stray-pixel removal, outline gaps, light direction,
-      shade count. Target: it passes the owner-approved assets (pier, bench_v2) and vanilla, and flags the
-      rejected ones (planter, stone wall, footbridge).
-- [ ] **Pixel seam check** for genuinely new terrain tiles, calibrated on vanilla seams.
-- [ ] **Bootstrapping:** owner-approved maps become training data, so new assets gain real statistics.
-- [ ] **Cheap judge test:** check whether small vision models (Gemini Flash, Haiku, Qwen-VL), given a yes/no
-      checklist, agree with the human scores on the benchmark maps.
+  `INFO SHAPE` (3x3 shapes vanilla never uses) and `INFO LAYOUT` (empty lawns, mirror symmetry) are
+  info-only hints on top.
+- **Broken objects:** `WARN OBJECT` flags a tree without its upper half, a rock face without its top, or a
+  ledge without its end. It's learned from vanilla neighbours, and is 0 on all 72 vanilla maps. It includes
+  the map edge against the border, and skips sides that have a connection.
+- **Tile cards:** what each metatile *is* (physical class, role such as edge, corner or open, the neighbours it
+  needs), computed from vanilla instead of guessed names. Role predictions are 89-95% accurate in
+  leave-one-out tests.
+- **Kitbashing:**
+  - `pk kit find/fit` searches vanilla pieces across about 40 maps (pieces made only of shared tiles are
+    portable between tilesets);
+  - `map copy --repair` stitches the joins without rewriting the piece;
+  - `kit fit` only offers pieces that don't break objects (checked by pasting in memory).
+- **`terrain auto`:** fills a box from its surroundings; `--options 3` previews variants without writing. It
+  never breaks a tree or rock.
+- **Checks after every write:** `reach` (nothing got cut off, per entrance, collision before water), the
+  repair rim warning, and a matching vanilla border on `map new`.
+- **Blockout tiler:** a map drawn as letters (`T` trees, `~` water, `s` sand, `p` path, ...) plus an optional
+  elevation layer is turned into real tiles. It chooses tiles by letter context, solves forests, rocks and water
+  as whole regions, and solves large maps in sections. Five vanilla maps (Route 1, Route 22, Pallet Town,
+  Route 3, One Island Kindle Road) rebuild from their own letters, leave-one-out:
+  - 99.6-100% letters;
+  - 0 broken objects;
+  - 0 cells cut off;
+  - 0 open banks.
+- **aiceus:** a local art-director view that shows lint and objects on the map. Drag a box to write a ticket,
+  find vanilla pieces that fit it, or preview `terrain auto` variants. It never writes to maps itself.
+- **Benchmarks:** level design (v1 → v2 → v3, several models per round) and dialogue (8 models), with blind scoring.
+  - **v2 result:** the same model (Sol) built a clearly better map with the kitbash tools than without them.
+  - **v3 result:** only the strongest model (Argon) composes well on its own; the others repeat the same
+    layout mistakes.
 
-## Round 3: highland kit ⛰️
-- [ ] **Plateau brush:** paint a shape at a height level, and the solver builds cliff faces, rim edges, corners
-      and stairs, with correct collision and elevation. It learns from Routes 3, 4, 9, 10, 22 and 23.
-- [ ] **Ledges and stairs** as first-class terrain: one-way drops and walkable ramps.
-- [ ] **Height-aware reachability:** `reach.py` understands stairs, ledges and elevation changes, so no plateau
-      becomes unreachable.
-- [ ] **Richer rock art** through the asset pipeline: cliff faces a little more detailed than vanilla.
-- Target: re-solve the cliffs of vanilla Route 3/4 with the brush and reproduce them closely; a new highland
-  map passes lint, the patch critic and reachability from every entrance.
+## Replaced 🔁
+Planned, then overtaken by something that works better:
+- **Diagonal solver weights** (missed: +0.97 pp, and no weight helped later) → the blockout tiler's 3x3 letter
+  contexts and region solves.
+- **Hand-written metatile names** (many of round 1's turned out wrong, e.g. `water_151` is walkable) → computed
+  tile cards; the name audit lists the contradictions.
+- **The polish loop** (three attempts, each judged worse by eye) → build correctly from vanilla shapes instead.
+  `pk map polish` remains as an experimental tool.
+- **Chunk score as a quality judge** (empty maps outscored vanilla) → kept as a report; quality is judged by
+  lint, layout hints and the human eye.
 
-## Round 4: animation pipeline ✨
-- [ ] **Animated `.px`:** 2–8 frames per tile in one file.
-- [ ] **Compiler:** frame graphics plus registration in `src/tileset_anims.c`, within VRAM and per-frame CPU
-      budgets.
-- [ ] **Animation critic:** a seamless loop, a small moving area (vanilla flowers move only a few pixels),
-      FRLG-like timing, same palette.
-- [ ] **First set:** waving tall grass, a waterfall, a town fountain, flickering lamps at night.
-- Target: the animations build, run in mGBA at full speed, and pass the critic; vanilla animations still
-  work.
+## In progress 🚧
+- **Whole objects only:**
+  - a catalogue of complete vanilla objects (trees, forest edges, bushes, rocks, cliffs, fences, ledges);
+  - `pk object place`, `pk object line` and `pk forest`;
+  - low-level paint, copy and stamp **refuse** writes that would break an object or leave an open bank.
 
-## Round 5: rebuild Kanto
-- [ ] Apply the blueprints region by region with the full toolchain: sketch, polish loop, critics, a quick human
-      check, then build.
-- [ ] Dialogue pass for every town, using the dialogue benchmark's gate and voice rules.
-- [ ] Playtest every changed map through the mGBA bridge.
+  Targets: 0 half trees from `pk forest` on any box size; a benchmark map with 262 broken objects gets fixed
+  through these commands.
+- **Two-level layout:**
+  - a coarse macro sketch (one letter per 4x4 area, from a model, the owner or a vanilla template) fixes the
+    composition;
+  - chunks learned from vanilla fill in the detail, with coasts and forest edges free to wiggle off the grid.
+
+  Target: a coastal brief gives 3 variants with no floating paths or sand, every block matching its sketch,
+  and the owner judging the composition first.
+- **Paths and shapes:**
+  - a winding path tool (A* with vanilla road statistics);
+  - an MST network linking every exit;
+  - autotiling learned from vanilla 8-neighbour masks, so every junction, crossing and dead end gets its
+    correct tile;
+  - a shape library of real vanilla ponds, coves, islands and groves.
+
+  Known bugs: the path tool fails on the Sevii tileset and at diagonal joins.
+
+## Next
+- **Blind scoring** of the v3 maps and the dialogue entries, then a **V4 map round** with the new commands on
+  the same briefs, as a before/after test.
+- **Dialogue polish:**
+  - automatic checks for caps rules (MAGIKARP, TRAINERS) and wrong game facts;
+  - a style guide drawn from the best entries;
+  - per-town context, so NPCs stay consistent across the region.
+- **Production split:** a strong model plans the layout and critiques it; a cheap model carries out tickets and
+  writes; the human art director has the final say in aiceus.
+
+## Later
+### Highland kit ⛰️
+- **Plateau brush:** paint a shape at a height level, and the tools build cliff faces, rim edges, corners and
+  stairs, with correct collision and elevation, learned from Routes 3, 4, 9, 10, 22 and 23. (The blockout
+  elevation layer and the elevation-aware reach check are the first pieces.)
+- **Ledges and stairs** as first-class objects.
+- **Richer rock art** through the asset pipeline.
+- Target: rebuild vanilla Route 3/4's cliffs with the brush; a new highland map passes lint, objects and reach
+  from every entrance.
+
+### Animation pipeline ✨
+- **Animated `.px`** with 2-8 frames per tile, compiled into `src/tileset_anims.c` within VRAM and CPU budgets.
+- **Animation critic:** a seamless loop, a small moving area, FRLG-like timing.
+- **First set:** waving tall grass, a waterfall, a town fountain, lamps at night.
+
+### Rebuild Kanto
+- Region by region: macro layout, blockout, whole objects, checks, a human pass in aiceus, then build.
+- A dialogue pass for every town.
+- Playtest every changed map in mGBA.
 
 ---
 
 ## Help wanted
-Each round splits into self-contained tasks with clear targets. Good first contributions:
-- **Round 1 or 2:** calibrate `map lint` and build the 3x3 patch critic. Pure Python, and easy to measure.
-- **Round 3:** the plateau brush, if you like algorithms.
-- **Round 4:** the animation compiler, if you know `tileset_anims.c`.
-- **Benchmark:** add a model. Copy a file from `tools/pk/bench/runs/`, run it, and open a PR.
+Self-contained tasks with clear targets:
+- **The macro layout level, or the path autotile table:** pure Python, measured against vanilla.
+- **The plateau brush,** if you like algorithms.
+- **The animation compiler,** if you know `tileset_anims.c`.
+- **Benchmark:** add a model. Copy a file from `tools/pk/bench/runs_v3/` (maps) or `tools/pk/bench/dialogue/runs/`
+  (dialogue), run it, and open a PR with the outputs.
